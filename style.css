@@ -181,17 +181,6 @@ input:focus-visible,
   color: var(--color-primary);
 }
 .site-period {
-  margin-bottom: var(--space-2);
-  font-size: var(--fs-sm);
-  color: var(--color-muted);
-}
-.site-tagline {
-  margin-bottom: var(--space-2);
-  font-style: italic;
-  color: var(--color-earth);
-}
-.site-description {
-  max-width: 60ch;
   margin-bottom: 0;
   font-size: var(--fs-sm);
   color: var(--color-muted);

@@ -67,6 +67,10 @@ npm test        # node tests/test-app.js — 34 asserções em jsdom
 
 O harness cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa/bloco, classe `done` + badge "Concluída", persistência e restauração via `localStorage`, tolerância a JSON corrompido, `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes e conteúdo obrigatório do roadmap.
 
+## Site publicado
+
+**https://llicels.github.io/cloud-infra-roadmap/** — hospedado no GitHub Pages (branch `main`, pasta raiz, sem build). Qualquer `git push` no `main` republica automaticamente em ~1 minuto.
+
 ## Publicar (deploy gratuito)
 
 A aplicação é 100% estática. A opção recomendada é o **Cloudflare Pages** (plano gratuito, HTTPS, domínios `.pages.dev`):
@@ -118,7 +122,7 @@ npx vercel --prod
 
 ## Notas de fidelidade
 
-- O conteúdo segue o **PDF original** nas divergências em relação ao SDD: critérios "Pronto quando" na primeira pessoa ("Consigo…"), tagline da capa, objetivos das etapas 1 e 3–7 e frases do "Como utilizar".
+- O conteúdo segue o **PDF original** nas divergências em relação ao SDD: critérios "Pronto quando" na primeira pessoa ("Consigo…"), objetivos das etapas 1 e 3–7 e frases do "Como utilizar". A tagline da capa foi removida a pedido do dono do roadmap.
 - Frases decorativas/infantis do rodapé do PDF foram **omitidas de propósito** (SDD §2.1 exige interface sóbria).
 - Um link do PDF (`docs.gns3.com/docs/`, 404) foi corrigido para a raiz oficial `docs.gns3.com`; os demais 21 URLs foram validados (HTTP 200).
 - O roadmap não foi alterado: nada foi acrescentado, antecipado ou tornado obrigatório.

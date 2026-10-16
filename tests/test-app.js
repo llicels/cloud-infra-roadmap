@@ -118,7 +118,6 @@ t('sem classificacao por data', !/atrasad/i.test(document.body.textContent));
 t('toggle buttons com classe ghost', document.querySelectorAll('button.btn-ghost').length === 8);
 
 // --- fidelidade pontual ---
-t('tagline no header', /conhecimento técnico → prática → confiança/.test(document.getElementById('header-site').textContent));
 t('objetivo Etapa 1 do PDF', /não sei nem por onde começar/.test(document.querySelector('#etapa-1 .stage-objective').textContent));
 t('pronto quando 1a pessoa do PDF', /Consigo fazer essas operações básicas/.test(document.querySelector('#etapa-1 details.block').textContent));
 t('certificacao nota sem checkbox', /Study Guide oficial/.test(document.querySelector('#checkpoint-container').textContent) && document.querySelectorAll('#checkpoint-container aside input').length === 0);

@@ -3,7 +3,6 @@ window.ROADMAP = {
     title: "Cloud & Infra Roadmap",
     version: "4.1",
     period: "21/09/2026 — 31/03/2027",
-    tagline: "conhecimento técnico → prática → confiança",
     goal: "Ter conhecimento prático em Linux, redes, Cisco Packet Tracer, GNS3, Docker, Kubernetes, Azure, IaC, CI/CD e observabilidade — com capacidade de explicar o que está fazendo e reproduzir tarefas comuns.",
     goalNote: "Certificações ficam em segundo plano. O foco do roadmap é conhecimento demonstrável.",
     howToUse: [
