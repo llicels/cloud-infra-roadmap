@@ -13,8 +13,8 @@ function t(name, cond) {
   else { fail++; console.log('FALHOU:', name); }
 }
 
-function boot(seed) {
-  const dom = new JSDOM(html, { url: 'https://roadmap.local/', runScripts: 'outside-only', pretendToBeVisual: true });
+function boot(seed, hash) {
+  const dom = new JSDOM(html, { url: 'https://roadmap.local/' + (hash || ''), runScripts: 'outside-only', pretendToBeVisual: true });
   if (seed) dom.window.localStorage.setItem('cloud-infra-roadmap-v1', seed);
   dom.window.eval(dataSrc);
   dom.window.eval(scriptSrc);
@@ -103,6 +103,23 @@ t('ckpt-01 classe done', document.getElementById('ckpt-01').closest('.ckpt-item'
 const ls = JSON.parse(window.localStorage.getItem('cloud-infra-roadmap-v1'));
 t('storage separa tasks/checkpoint', Object.keys(ls.tasks).length === 3 && Object.keys(ls.checkpoint).length === 1 && ls.version === 1);
 
+// --- snapshot compartilhado (#s=) ---
+const shareBtn = document.querySelector('.btn-share');
+t('botao Compartilhar presente', !!shareBtn);
+shareBtn.click();
+const shareUrl = shareBtn.dataset.url || '';
+t('share gera link com hash', /^[^#]+#s=[A-Za-z0-9_-]+$/.test(shareUrl));
+const domS = boot(null, shareUrl.slice(shareUrl.indexOf('#')));
+t('view: banner visivel', !domS.window.document.getElementById('share-banner').hidden);
+t('view: banner com data', /instantâneo de \d{2}\/\d{2}\/\d{4}/.test(domS.window.document.getElementById('share-date').textContent));
+t('view: todos checkboxes desabilitados', [...domS.window.document.querySelectorAll('input[type=checkbox]')].every(cb => cb.disabled));
+t('view: replica progresso (3 de 69)', /3 de 69 atividades concluídas/.test(domS.window.document.querySelector('.hero-sub').textContent));
+t('view: replica checkpoint', domS.window.document.getElementById('ckpt-01').checked);
+t('view: nao grava localStorage alheio', domS.window.localStorage.getItem('cloud-infra-roadmap-v1') === null);
+t('view: sem botao de share', !domS.window.document.querySelector('.btn-share'));
+const domBad = boot(null, '#s=zz');
+t('hash invalido cai em modo normal', domBad.window.document.getElementById('share-banner').hidden && !domBad.window.document.getElementById('e1-b1-s1').disabled);
+
 // --- persistencia apos recarga ---
 const stored = window.localStorage.getItem('cloud-infra-roadmap-v1');
 const dom2 = boot(stored);
@@ -115,7 +132,7 @@ t('json corrompido nao quebra', dom3.window.document.querySelectorAll('section.s
 
 // --- etapas nunca atrasadas / expansao ---
 t('sem classificacao por data', !/atrasad/i.test(document.body.textContent));
-t('toggle buttons com classe ghost', document.querySelectorAll('button.btn-ghost').length === 8);
+t('toggle buttons com classe ghost', document.querySelectorAll('#stages-container button.btn-ghost').length === 8);
 
 // --- fidelidade pontual ---
 t('objetivo Etapa 1 do PDF', /não sei nem por onde começar/.test(document.querySelector('#etapa-1 .stage-objective').textContent));

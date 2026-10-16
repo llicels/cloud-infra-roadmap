@@ -512,6 +512,30 @@ main section[id] + section[id] { border-top: 1px solid var(--color-border); }
   color: var(--color-muted);
 }
 
+/* ===== Banner de instantâneo compartilhado ===== */
+.share-banner {
+  background: var(--color-terra-strong);
+  color: #fff;
+  padding-block: var(--space-2);
+}
+.banner-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.share-banner p { margin: 0; font-size: var(--fs-sm); }
+.share-banner strong { font-weight: 700; }
+.share-banner .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.7); }
+.share-banner .btn-ghost:hover { background: rgba(255,255,255,.15); border-color: #fff; }
+.step input[type=checkbox]:disabled,
+.ckpt-item input[type=checkbox]:disabled {
+  opacity: .55;
+  cursor: default;
+}
+.hero-actions { margin-top: var(--space-2); }
+
 /* ===== Hero de progresso ===== */
 .hero {
   background: var(--color-surface);

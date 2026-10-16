@@ -45,6 +45,7 @@ Acesse `http://localhost:8080`.
 - **Checkpoint final independente**: 11 competências com estado próprio — marcar o checkpoint não afeta as atividades semanais, e vice-versa.
 - **Persistência** em `localStorage` (chave `cloud-infra-roadmap-v1`), com recuperação após recarregar ou reabrir.
 - **Materiais**: links para as páginas oficiais embutidas no PDF original, validados.
+- **Compartilhar progresso (instantâneo)**: o botão "Compartilhar meu progresso" gera um link com o estado atual codificado no hash da URL (`#s=…`). Quem abrir vê exatamente esse progresso, em **modo somente leitura** (com aviso e data do instantâneo), sem sobrescrever o próprio. É estático: cada link é uma fotografia, não sincronização em tempo real.
 
 ### Contraste
 
@@ -113,10 +114,11 @@ npx vercel --prod
 - Marque uma atividade, **recarregue** e confirme a persistência (o progresso é por dispositivo/navegador).
 - Valide alguns links de materiais.
 
+
 ## Segurança e privacidade
 
 - Nenhum segredo, credencial ou dado pessoal no código.
-- O progresso fica **somente no navegador** do usuário (localStorage), não é sincronizado nem visível para outras pessoas — mesmo no site publicado.
+- O progresso fica **somente no navegador** do usuário (localStorage). Outras pessoas só veem o que você decidir mostrar, via link de instantâneo — nada é enviado a servidores.
 - Sem analytics, sem scripts de terceiros, sem cookies.
 - Links externos abrem com `rel="noopener noreferrer"`; apenas URLs `https:` dos dados são renderizadas como link.
 

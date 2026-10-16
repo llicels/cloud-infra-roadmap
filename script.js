@@ -12,6 +12,7 @@
   let data = null;
   let index = null;
   let storageAvailable = true;
+  let viewMode = false; // snapshot compartilhado via #s= — somente leitura, sem persistir
 
   const state = { tasks: {}, checkpoint: {} };
 
@@ -187,8 +188,8 @@
   }
 
   function save() {
-    if (!storageAvailable) {
-      return;
+    if (viewMode || !storageAvailable) {
+      return; // snapshot compartilhado nunca sobrescreve o progresso local
     }
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -230,6 +231,145 @@
     } else if (!storageAvailable) {
       noteEl.textContent = UNAVAILABLE_NOTE;
     }
+  }
+
+  /* ---------------- Compartilhar: instantâneo via #s= (sem backend) ----------------
+   * Formato: base64url( bits das tasks | bits do checkpoint | 4 bytes dias-epoch ).
+   * Quem abre o link vê o progresso codificado em modo somente-leitura; nada é
+   * gravado no localStorage de quem recebe. */
+
+  let shareDate = null;
+
+  function packBits(bits) {
+    const bytes = [];
+    for (let i = 0; i < bits.length; i += 8) {
+      let b = 0;
+      for (let j = 0; j < 8; j += 1) {
+        b = (b << 1) | (bits[i + j] ? 1 : 0);
+      }
+      bytes.push(b);
+    }
+    return bytes;
+  }
+
+  function unpackBits(bytes, count) {
+    const bits = [];
+    for (let i = 0; i < count; i += 1) {
+      bits.push((bytes[i >> 3] >> (7 - (i % 8))) & 1);
+    }
+    return bits;
+  }
+
+  function b64urlEncode(bytes) {
+    let bin = '';
+    bytes.forEach(function (x) { bin += String.fromCharCode(x); });
+    return window.btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function b64urlDecode(str) {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const bin = window.atob(b64 + '==='.slice((b64.length + 3) % 4));
+    const bytes = [];
+    for (let i = 0; i < bin.length; i += 1) {
+      bytes.push(bin.charCodeAt(i));
+    }
+    return bytes;
+  }
+
+  function encodeShare() {
+    const tBits = packBits(index.allTaskIds.map(function (id) { return state.tasks[id] === true ? 1 : 0; }));
+    const cBits = packBits(data.checkpoint.items.map(function (it) { return state.checkpoint[it.id] === true ? 1 : 0; }));
+    const days = Math.floor(Date.now() / 86400000);
+    return tBits.concat(cBits, [(days >> 24) & 255, (days >> 16) & 255, (days >> 8) & 255, days & 255]);
+  }
+
+  function decodeShare(raw) {
+    try {
+      const bytes = b64urlDecode(raw);
+      const nTasks = index.allTaskIds.length;
+      const nCk = data.checkpoint.items.length;
+      const tLen = Math.ceil(nTasks / 8);
+      const cLen = Math.ceil(nCk / 8);
+      if (bytes.length < tLen + cLen + 4) {
+        return null;
+      }
+      let days = 0;
+      for (let i = 0; i < 4; i += 1) {
+        days = days * 256 + bytes[tLen + cLen + i];
+      }
+      const ts = new Date(days * 86400000);
+      if (isNaN(ts.getTime())) {
+        return null;
+      }
+      return {
+        tasks: unpackBits(bytes.slice(0, tLen), nTasks),
+        checkpoint: unpackBits(bytes.slice(tLen, tLen + cLen), nCk),
+        date: ts
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyShare() {
+    const m = /[#&]s=([A-Za-z0-9_-]+)/.exec(window.location.hash || '');
+    if (!m) {
+      return;
+    }
+    const snap = decodeShare(m[1]);
+    if (!snap) {
+      return;
+    }
+    viewMode = true;
+    shareDate = snap.date;
+    snap.tasks.forEach(function (bit, i) {
+      if (bit) {
+        state.tasks[index.allTaskIds[i]] = true;
+      }
+    });
+    snap.checkpoint.forEach(function (bit, i) {
+      if (bit) {
+        state.checkpoint[data.checkpoint.items[i].id] = true;
+      }
+    });
+  }
+
+  function enterViewModeUi() {
+    const banner = document.getElementById('share-banner');
+    if (!banner) {
+      return;
+    }
+    banner.removeAttribute('hidden');
+    const label = document.getElementById('share-date');
+    if (label && shareDate) {
+      label.textContent = 'instantâneo de ' + shareDate.toLocaleDateString('pt-BR');
+    }
+    const exit = document.getElementById('share-exit');
+    if (exit) {
+      exit.addEventListener('click', function () {
+        window.location.hash = '';
+        window.location.reload();
+      });
+    }
+    document.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
+      cb.disabled = true;
+    });
+    const nextBtn = document.querySelector('.btn-next');
+    if (nextBtn) {
+      nextBtn.remove();
+    }
+  }
+
+  function copyText(text, btn) {
+    btn.dataset.url = text;
+    const ok = function () { btn.textContent = 'Link copiado!'; };
+    const fail = function () { btn.textContent = 'Copie o link de Compartilhar'; };
+    if (window.navigator && window.navigator.clipboard && window.navigator.clipboard.writeText) {
+      window.navigator.clipboard.writeText(text).then(ok, fail);
+    } else {
+      fail();
+    }
+    window.setTimeout(function () { btn.textContent = 'Compartilhar meu progresso'; }, 3000);
   }
 
   /* ---------------- Estado -> ações ---------------- */
@@ -456,6 +596,13 @@
       ui.heroStages,
       ui.nextBox
     ]);
+    if (!viewMode) {
+      const shareBtn = el('button', { type: 'button', class: 'btn-ghost btn-share', text: 'Compartilhar meu progresso' });
+      shareBtn.addEventListener('click', function () {
+        copyText(window.location.origin + window.location.pathname + '#s=' + b64urlEncode(encodeShare()), shareBtn);
+      });
+      statsCol.appendChild(el('div', { class: 'hero-actions' }, [shareBtn]));
+    }
 
     const chips = el('ul', { class: 'stage-chips' });
     ui.stages.forEach(function (st) {
@@ -671,12 +818,16 @@
     }
     index = buildIndex();
     hydrate(readStored());
+    applyShare();
     renderStages();
     renderOverview();
     renderMaterials();
     renderCheckpoint();
     refreshAll();
     updateFooterNote();
+    if (viewMode) {
+      enterViewModeUi();
+    }
   }
 
   if (document.readyState === 'loading') {
