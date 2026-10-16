@@ -77,6 +77,13 @@ t('step marcado classe done', document.getElementById('e1-b1-s1').closest('.step
 t('badge Concluida visivel', !document.getElementById('e1-b1-s1').closest('.step').querySelector('.badge-done').hidden);
 t('badge oculta em step nao feito', document.getElementById('e7-b4-s1').closest('.step').querySelector('.badge-done').hasAttribute('hidden'));
 t('css esconde [hidden]', /\[hidden\][^}]*display:\s*none\s*!important/s.test(fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8')));
+{
+  const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8');
+  t('css trava overflow-x na pagina', /overflow-x:\s*clip/.test(css));
+  t('css chips com min-width 0', /\.stage-chips > li\s*\{\s*min-width:\s*0/.test(css));
+  t('css chip-bar com display block', /\.chip-bar\s*\{[^}]*display:\s*block/.test(css));
+  t('nav sem scroll interno', !/\.nav-inner\s*\{[^}]*overflow-x:\s*auto/.test(css));
+}
 t('nav strip 4%', document.querySelector('.nav-progress-text').textContent === '4%');
 t('chip 1 Em andamento', document.querySelectorAll('.chip-status')[0].textContent === 'Em andamento');
 t('bloco 1.1 badge-done', document.querySelector('#etapa-1 details.block .block-summary .badge').classList.contains('badge-done'));

@@ -41,6 +41,11 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 64px;
+  overflow-x: clip;
+}
+
+@media (max-width: 767px) {
+  html { scroll-padding-top: 100px; }
 }
 
 /* Autoridade do atributo hidden sobre regras de display de componentes (ex.: .badge) */
@@ -202,18 +207,16 @@ input:focus-visible,
 }
 .nav-inner {
   display: flex;
-  gap: var(--space-1);
-  overflow-x: auto;
-  padding-right: 150px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-1);
 }
 .nav-progress {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  margin-left: auto;
+  padding: var(--space-2) 0;
 }
 .nav-progress-track {
   display: block;
@@ -234,10 +237,6 @@ input:focus-visible,
   font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--color-primary-dark);
-}
-@media (max-width: 480px) {
-  .nav-progress-track { width: 56px; }
-  .nav-inner { padding-right: 110px; }
 }
 .nav-link {
   display: inline-flex;
@@ -611,10 +610,12 @@ main section[id] + section[id] { border-top: 1px solid var(--color-border); }
 @media (min-width: 860px) {
   .stage-chips { grid-template-columns: repeat(4, 1fr); }
 }
+.stage-chips > li { min-width: 0; }
 .chip {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  min-width: 0;
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
   background: var(--color-bg);
@@ -658,6 +659,7 @@ main section[id] + section[id] { border-top: 1px solid var(--color-border); }
   white-space: nowrap;
 }
 .chip-bar {
+  display: block;
   height: 6px;
   background: var(--color-sand);
   border-radius: 3px;
