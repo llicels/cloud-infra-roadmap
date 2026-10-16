@@ -37,12 +37,18 @@ Acesse `http://localhost:8080`.
 
 ## Funcionalidades
 
+- **Hero de progresso** (primeiro bloco após a nav): anel SVG com a porcentagem, contadores "X de 69 atividades" e "X de 7 etapas", mini-barra fixa na navegação (sempre visível) e **Próxima ação** — card que aponta a primeira task pendente com botão "Ir para a tarefa" (rola até ela, expande o bloco e foca o checkbox).
+- **Chips por etapa**: 7 atalhos com número, barra e status (A fazer / Em andamento / Concluída), em ritmo alternado musgo/terracota.
+- **"Sobre este roadmap"**: nota, "Como utilizar", ritmo e tabela de competências ficam num painel expansível abaixo do hero, para não poluir a primeira dobra.
 - **Checklists interativas**: 69 atividades marcáveis (itens "Faça" dos blocos). Os 4 itens de restrição do roadmap aparecem como *Observação* não-marcável.
-- **Progresso geral e por etapa**: atualizado imediatamente ao marcar/desmarcar.
 - **Blocos expansíveis** (`details`/`summary`) com botões "Expandir/recolher todos" (global e por etapa).
 - **Checkpoint final independente**: 11 competências com estado próprio — marcar o checkpoint não afeta as atividades semanais, e vice-versa.
 - **Persistência** em `localStorage` (chave `cloud-infra-roadmap-v1`), com recuperação após recarregar ou reabrir.
 - **Materiais**: links para as páginas oficiais embutidas no PDF original, validados.
+
+### Contraste
+
+A paleta base do SDD (§2.2) foi mantida, mas os tokens de apoio foram escurecidos para atender WCAG AA com folga e dar corpo visual: `--color-muted` `#5B5E53` (~6,4:1), `--color-sand` `#C9BFA6`, `--color-border` `#C2C0A9`. Adicionados `--color-terra-strong` `#7A5233` (texto/acento terracota) e `--color-ink` `#23261F` (números). O terracota só aparece na espinha de etapas pares, numeração alternada e marcadores — o progresso permanece 100% verde-musgo.
 
 ### Regra de cálculo do progresso (SDD §8.5)
 

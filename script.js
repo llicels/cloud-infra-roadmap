@@ -19,10 +19,19 @@
     steps: {},
     blocks: [],
     stages: [],
-    summaryRows: [],
-    toggleLabels: [],
-    general: null
+    chips: [],
+    nextBox: null,
+    ring: null,
+    heroSub: null,
+    heroStages: null,
+    navFill: null,
+    navText: null,
+    toggleLabels: []
   };
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const RING_R = 54;
+  const RING_C = 2 * Math.PI * RING_R;
 
   /**
    * Regra de cálculo de progresso (SDD §8.5 — requisito de documentação):
@@ -109,6 +118,49 @@
     barNode.setAttribute('aria-valuenow', String(p.done));
     barNode.setAttribute('aria-valuetext', p.done + ' de ' + p.total);
     fillNode.style.width = p.pct + '%';
+  }
+
+  /** Anel de progresso (SVG puro, sem dependências). */
+  function makeRing(max) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 120 120');
+    svg.setAttribute('class', 'hero-ring');
+    svg.setAttribute('role', 'progressbar');
+    svg.setAttribute('aria-label', 'Progresso geral das atividades');
+    svg.setAttribute('aria-valuemin', '0');
+    svg.setAttribute('aria-valuemax', String(max));
+    svg.setAttribute('aria-valuenow', '0');
+    const track = document.createElementNS(SVG_NS, 'circle');
+    track.setAttribute('class', 'ring-track');
+    track.setAttribute('cx', '60');
+    track.setAttribute('cy', '60');
+    track.setAttribute('r', String(RING_R));
+    const arc = document.createElementNS(SVG_NS, 'circle');
+    arc.setAttribute('class', 'ring-arc');
+    arc.setAttribute('cx', '60');
+    arc.setAttribute('cy', '60');
+    arc.setAttribute('r', String(RING_R));
+    arc.setAttribute('stroke-dasharray', String(RING_C));
+    arc.setAttribute('stroke-dashoffset', String(RING_C));
+    arc.setAttribute('transform', 'rotate(-90 60 60)');
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'ring-label');
+    label.setAttribute('x', '60');
+    label.setAttribute('y', '60');
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('dominant-baseline', 'central');
+    label.textContent = '0%';
+    svg.appendChild(track);
+    svg.appendChild(arc);
+    svg.appendChild(label);
+    return { node: svg, arc: arc, label: label };
+  }
+
+  function setRing(ring, p) {
+    ring.node.setAttribute('aria-valuenow', String(p.done));
+    ring.node.setAttribute('aria-valuetext', p.done + ' de ' + p.total + ' atividades');
+    ring.arc.setAttribute('stroke-dashoffset', String(RING_C * (1 - p.done / (p.total || 1))));
+    ring.label.textContent = p.pct + '%';
   }
 
   /* ---------------- Persistência (CONTRACT.md §6) ---------------- */
@@ -237,7 +289,7 @@
       el('label', { class: 'step-label', for: step.id, text: step.text }),
       badge
     ]);
-    stepRefs.push({ id: step.id, el: li, badge: badge });
+    stepRefs.push({ id: step.id, el: li, badge: badge, cb: checkbox, text: step.text });
     return li;
   }
 
@@ -296,12 +348,12 @@
     return {
       node: details,
       details: details,
-      ref: { badge: badge, steps: stepRefs, taskIds: taskIds }
+      ref: { badge: badge, steps: stepRefs, taskIds: taskIds, code: block.code, title: block.title }
     };
   }
 
   function makeToggleButton(targets) {
-    const btn = el('button', { type: 'button' });
+    const btn = el('button', { type: 'button', class: 'btn-ghost' });
     function updateLabel() {
       const anyClosed = targets.some(function (d) { return !d.open; });
       btn.textContent = anyClosed ? 'Expandir todos' : 'Recolher todos';
@@ -332,6 +384,8 @@
         stageDetails.push(rendered.details);
         allDetails.push(rendered.details);
         stageTaskIds.push.apply(stageTaskIds, rendered.ref.taskIds);
+        rendered.ref.details = rendered.details;
+        rendered.ref.stageNumber = stage.number;
         ui.blocks.push(rendered.ref);
       });
       const bar = makeProgressBar('Progresso da etapa ' + stage.number, stageTaskIds.length);
@@ -340,7 +394,10 @@
         el('h3', { text: 'Etapa ' + stage.number + ' — ' + stage.title }),
         makeToggleButton(stageDetails)
       ]);
-      const section = el('section', { class: 'stage', id: 'etapa-' + stage.number }, [
+      const section = el('section', {
+        class: 'stage ' + (stage.number % 2 === 1 ? 'stage-musgo' : 'stage-terra'),
+        id: 'etapa-' + stage.number
+      }, [
         header,
         stage.period ? el('p', { class: 'stage-period', text: stage.period }) : null,
         stage.objective ? el('p', { class: 'stage-objective', text: stage.objective }) : null,
@@ -378,7 +435,7 @@
         el('dd', { class: 'competency-expected', text: c.expected })
       ]));
     });
-    mount.appendChild(el('h3', { text: 'Competências esperadas' }));
+    mount.appendChild(el('h4', { text: 'Competências esperadas' }));
     mount.appendChild(dl);
   }
 
@@ -388,76 +445,66 @@
       return;
     }
     const meta = data.meta || {};
-    const goalNote = el('aside', { class: 'note' }, [
-      el('span', { class: 'block-field-label', text: 'Nota' }),
-      ' ' + meta.goalNote
+    const total = index.allTaskIds.length;
+
+    ui.ring = makeRing(total);
+    ui.heroSub = el('p', { class: 'hero-sub' });
+    ui.heroStages = el('p', { class: 'hero-sub' });
+    ui.nextBox = el('div', { class: 'hero-next' });
+    const statsCol = el('div', { class: 'hero-stats', 'aria-live': 'polite' }, [
+      ui.heroSub,
+      ui.heroStages,
+      ui.nextBox
     ]);
-    const howTo = Array.isArray(meta.howToUse) && meta.howToUse.length
-      ? el('ul', null, meta.howToUse.map(function (t) { return el('li', { text: t }); }))
-      : null;
-    const head = [
-      blockField('Meta final', meta.goal ? el('p', { text: meta.goal }) : null),
-      meta.goalNote ? goalNote : null,
-      howTo ? blockField('Como utilizar', howTo) : null,
-      blockField('Ritmo', meta.pace ? el('p', { text: meta.pace }) : null)
-    ];
-    head.forEach(function (node) {
-      if (node) {
-        mount.appendChild(node);
-      }
-    });
 
-    const generalBar = makeProgressBar('Progresso geral das atividades', index.allTaskIds.length);
-    const generalText = el('p', { class: 'progress-text' });
-    const stagesText = el('p', { class: 'progress-text' });
-    const pendingNodes = ui.stages.map(function (st) {
-      return el('p', { class: 'progress-text', hidden: true }, [
-        'Próxima etapa incompleta: ',
-        el('a', {
-          class: 'nav-link',
-          href: '#etapa-' + st.number,
-          text: 'Etapa ' + st.number + ' — ' + st.title
-        })
-      ]);
-    });
-    const allDoneNode = el('p', { class: 'progress-text', hidden: true, text: 'Todas as etapas estão concluídas.' });
-    const summaryList = el('ul', { class: 'stage-summary-list' });
+    const chips = el('ul', { class: 'stage-chips' });
     ui.stages.forEach(function (st) {
-      const bar = makeProgressBar('Resumo de progresso da etapa ' + st.number, st.taskIds.length);
-      const text = el('span', { class: 'progress-text' });
-      summaryList.appendChild(el('li', null, [
-        el('a', {
-          class: 'nav-link',
-          href: '#etapa-' + st.number,
-          text: 'Etapa ' + st.number + ' — ' + st.title
-        }),
-        st.period ? el('span', { class: 'stage-period', text: st.period }) : null,
-        el('span', { class: 'stage-progress' }, [bar.node, text])
+      const fill = el('span', { class: 'chip-fill' });
+      const status = el('span', { class: 'chip-status' });
+      chips.appendChild(el('li', null, [
+        el('a', { class: 'chip', href: '#etapa-' + st.number }, [
+          el('span', { class: 'chip-head' }, [
+            el('span', { class: 'chip-num', text: String(st.number) }),
+            el('span', { class: 'chip-title', text: st.number + '. ' + st.title })
+          ]),
+          el('span', { class: 'chip-bar' }, [fill]),
+          status
+        ])
       ]));
-      ui.summaryRows.push({ bar: bar.node, fill: bar.fill, text: text });
+      ui.chips.push({ fill: fill, status: status });
     });
 
-    mount.appendChild(el('div', { class: 'overview-card' }, [
-      el('h3', { text: 'Progresso' }),
-      el('div', { class: 'overview-stat', 'aria-live': 'polite' }, [generalBar.node, generalText]),
-      el('div', { class: 'overview-stat' }, [stagesText]),
-      el('div', { class: 'overview-stat' }, pendingNodes.concat([allDoneNode])),
-      el('div', { class: 'overview-stat' }, [
-        el('a', { class: 'nav-link', href: '#checkpoint', text: 'Ir para o checkpoint final' })
-      ]),
-      summaryList
+    mount.appendChild(el('div', { class: 'hero' }, [
+      el('div', { class: 'hero-top' }, [ui.ring.node, statsCol]),
+      meta.goal ? el('p', { class: 'hero-intro', text: meta.goal }) : null,
+      chips
     ]));
 
-    ui.general = {
-      bar: generalBar.node,
-      fill: generalBar.fill,
-      text: generalText,
-      stagesText: stagesText,
-      pendingNodes: pendingNodes,
-      allDoneNode: allDoneNode
-    };
+    const about = el('details', { class: 'about' });
+    about.appendChild(el('summary', { class: 'about-summary', text: 'Sobre este roadmap' }));
+    const aboutBody = el('div', { class: 'about-body' });
+    if (meta.goalNote) {
+      aboutBody.appendChild(el('aside', { class: 'note' }, [
+        el('span', { class: 'block-field-label', text: 'Nota' }),
+        ' ' + meta.goalNote
+      ]));
+    }
+    const howTo = Array.isArray(meta.howToUse) && meta.howToUse.length
+      ? blockField('Como utilizar', el('ul', null, meta.howToUse.map(function (t) { return el('li', { text: t }); })))
+      : null;
+    if (howTo) {
+      aboutBody.appendChild(howTo);
+    }
+    const paceField = blockField('Ritmo', meta.pace ? el('p', { text: meta.pace }) : null);
+    if (paceField) {
+      aboutBody.appendChild(paceField);
+    }
+    renderCompetencies(aboutBody);
+    about.appendChild(aboutBody);
+    mount.appendChild(about);
 
-    renderCompetencies(mount);
+    ui.navFill = document.querySelector('.nav-progress-fill');
+    ui.navText = document.querySelector('.nav-progress-text');
   }
 
   /* ---------------- Render: materiais e checkpoint ---------------- */
@@ -528,6 +575,40 @@
 
   /* ---------------- Atualização de indicadores ---------------- */
 
+  function renderNextAction() {
+    if (!ui.nextBox) {
+      return;
+    }
+    ui.nextBox.textContent = '';
+    for (let b = 0; b < ui.blocks.length; b += 1) {
+      const ref = ui.blocks[b];
+      for (let s = 0; s < ref.steps.length; s += 1) {
+        const step = ref.steps[s];
+        if (state.tasks[step.id] !== true) {
+          ui.nextBox.appendChild(el('p', { class: 'next-task' }, [
+            el('span', { class: 'next-label', text: 'Próxima ação · ' + ref.code + ' ' + ref.title }),
+            el('br'),
+            step.text
+          ]));
+          const btn = el('button', { type: 'button', class: 'btn-next', text: 'Ir para a tarefa' });
+          btn.addEventListener('click', function () {
+            ref.details.open = true;
+            if (typeof ref.details.scrollIntoView === 'function') {
+              ref.details.scrollIntoView({ block: 'center' });
+            }
+            step.cb.focus();
+          });
+          ui.nextBox.appendChild(btn);
+          return;
+        }
+      }
+    }
+    ui.nextBox.appendChild(el('p', { class: 'next-task' }, [
+      'Todas as ' + index.allTaskIds.length + ' atividades estão concluídas. ',
+      el('a', { class: 'nav-link', href: '#checkpoint', text: 'Revise o checkpoint final.' })
+    ]));
+  }
+
   function refreshAll() {
     ui.blocks.forEach(function (ref) {
       const p = progressOf(ref.taskIds);
@@ -545,25 +626,28 @@
       const st = ui.stages[i];
       setProgress(st.bar, st.fill, p);
       st.text.textContent = p.done + ' de ' + p.total + ' atividades';
-      const row = ui.summaryRows[i];
-      if (row) {
-        setProgress(row.bar, row.fill, p);
-        row.text.textContent = p.pct + '%';
+      const chip = ui.chips[i];
+      if (chip) {
+        chip.fill.style.width = p.pct + '%';
+        chip.status.textContent = p.total > 0 && p.done === p.total
+          ? 'Concluída'
+          : (p.done > 0 ? 'Em andamento' : 'A fazer');
       }
     });
 
     const g = progressOf(index.allTaskIds);
-    setProgress(ui.general.bar, ui.general.fill, g);
-    ui.general.text.textContent = g.done + ' de ' + g.total + ' atividades concluídas (' + g.pct + '%)';
-
+    setRing(ui.ring, g);
+    ui.heroSub.textContent = g.done + ' de ' + g.total + ' atividades concluídas';
     const finished = stageProgress.filter(function (p) { return p.total > 0 && p.done === p.total; }).length;
-    ui.general.stagesText.textContent = finished + ' de ' + ui.stages.length + ' etapas concluídas';
+    ui.heroStages.textContent = finished + ' de ' + ui.stages.length + ' etapas concluídas';
 
-    const nextIdx = stageProgress.findIndex(function (p) { return p.done < p.total; });
-    ui.general.pendingNodes.forEach(function (node, i) {
-      node.hidden = i !== nextIdx;
-    });
-    ui.general.allDoneNode.hidden = nextIdx === -1;
+    if (ui.navFill) {
+      ui.navFill.style.width = g.pct + '%';
+    }
+    if (ui.navText) {
+      ui.navText.textContent = g.pct + '%';
+    }
+    renderNextAction();
   }
 
   function refreshToggleLabels() {
