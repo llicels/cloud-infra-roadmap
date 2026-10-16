@@ -283,7 +283,7 @@
     checkbox.addEventListener('change', function () {
       setTask(step.id, checkbox.checked);
     });
-    const badge = el('span', { class: 'badge badge-done', text: 'Concluída' });
+    const badge = el('span', { class: 'badge badge-done', text: 'Concluída', hidden: true });
     const li = el('li', { class: 'step' }, [
       checkbox,
       el('label', { class: 'step-label', for: step.id, text: step.text }),

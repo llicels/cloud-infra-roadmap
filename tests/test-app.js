@@ -75,6 +75,8 @@ t('aria-valuenow ring = 3', document.querySelector('.hero-ring').getAttribute('a
 t('etapa 1 bar "2 de 12"', /2 de 12/.test(document.querySelector('#etapa-1 .stage-progress .progress-text').textContent));
 t('step marcado classe done', document.getElementById('e1-b1-s1').closest('.step').classList.contains('done'));
 t('badge Concluida visivel', !document.getElementById('e1-b1-s1').closest('.step').querySelector('.badge-done').hidden);
+t('badge oculta em step nao feito', document.getElementById('e7-b4-s1').closest('.step').querySelector('.badge-done').hasAttribute('hidden'));
+t('css esconde [hidden]', /\[hidden\][^}]*display:\s*none\s*!important/s.test(fs.readFileSync(path.join(ROOT, 'style.css'), 'utf8')));
 t('nav strip 4%', document.querySelector('.nav-progress-text').textContent === '4%');
 t('chip 1 Em andamento', document.querySelectorAll('.chip-status')[0].textContent === 'Em andamento');
 t('bloco 1.1 badge-done', document.querySelector('#etapa-1 details.block .block-summary .badge').classList.contains('badge-done'));

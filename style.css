@@ -43,6 +43,11 @@ html {
   scroll-padding-top: 64px;
 }
 
+/* Autoridade do atributo hidden sobre regras de display de componentes (ex.: .badge) */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
