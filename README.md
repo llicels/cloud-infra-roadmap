@@ -53,11 +53,11 @@ Acesse `http://localhost:8080`.
 
 | Modo | Como entra | O que mostra |
 | --- | --- | --- |
-| Visitante (padrão) | URL normal, sem hash | Progresso lido do gist, **somente leitura** |
+| Visitante (padrão) | URL normal, sem `#edit` | Progresso lido do gist, **somente leitura** |
 | Snapshot avulso | URL com `#s=…` | Progresso congelado no link, **somente leitura** |
-| Edição (dono) | URL com `#edit=<token>` válido | Tracker editável, sincronizado com o gist |
+| Edição (dono) | URL com `#edit` (token na URL ou já salvo) | Tracker editável, sincronizado com o gist |
 
-O token nunca vai para o repositório: ele é digitado via `#edit=` (validado por uma leitura autenticada) e fica salvo no `localStorage` do seu navegador, para não redigitar a cada visita.
+A URL pública fica **sempre travada**, inclusive no seu navegador: o token salvo só vale quando `#edit` está na URL. O token nunca vai para o repositório — é validado e guardado no `localStorage`. O modo edição mostra um banner "Modo edição ativo" com botão **Sair do modo edição** (limpa o token e volta ao somente leitura).
 
 ## Publicar seu progresso (fluxo do dono)
 
@@ -73,8 +73,9 @@ O token nunca vai para o repositório: ele é digitado via `#edit=` (validado po
    };
    ```
    Faça o `git push` (só dessa configuração; não precisa repetir para o progresso).
-4. Abra o site com `#edit=<TOKEN>` (ex.: `https://llicels.github.io/cloud-infra-roadmap/#edit=…`) e cole o token uma vez.
+4. Abra o site com `#edit=<TOKEN>` (ex.: `https://llicels.github.io/cloud-infra-roadmap/#edit=…`). Depois disso, basta abrir `#edit` (sem o token) que ele usa o token já salvo.
 5. Marque suas atividades — elas são enviadas ao gist automaticamente. Quem abrir a URL normal vê o progresso atualizado, somente leitura.
+6. Para travar de novo, clique em **Sair do modo edição** (ou simplesmente use a URL sem `#edit`).
 
 > O ID do gist é público (aparece no código) e tudo bem: a leitura é pública de propósito. O token é o único segredo.
 
@@ -94,10 +95,10 @@ A paleta base do SDD (§2.2) foi mantida, mas os tokens de apoio foram escurecid
 ```bash
 cd cloud-infra-roadmap/
 npm install
-npm test        # node tests/test-app.js — 75 asserções em jsdom
+npm test        # node tests/test-app.js — 86 asserções em jsdom
 ```
 
-O harness (com `fetch` mockado) cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa, classe `done` + badge "Concluída", `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes, conteúdo obrigatório do roadmap e os **três modos**: visitante somente leitura (lendo o gist), edição destravada por token válido (com envio PATCH ao gist e indicador "Salvo"), token inválido/sem configuração (permanece leitura) e snapshot `#s=`.
+O harness (com `fetch` mockado) cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa, classe `done` + badge "Concluída", `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes, conteúdo obrigatório do roadmap e os **três modos**: visitante somente leitura (lendo o gist), edição destravada só com `#edit` (banner ativo, envio PATCH ao gist e indicador "Salvo"), token inválido/sem token (leitura + banner de erro), token salvo **não** destravando a URL sem `#edit`, botão "Sair do modo edição" e snapshot `#s=`.
 
 ## Site publicado
 
@@ -144,6 +145,8 @@ npx vercel --prod
 - Teste a URL normal em **janela anônima**: você deve ver seu progresso, tudo desabilitado (somente leitura).
 - Abra com `#edit=<token>`, marque uma atividade e confirme o indicador "Salvo".
 - Valide alguns links de materiais.
+
+> **Cache:** o GitHub Pages serve os assets com `max-age=600`. O `index.html` referencia `style.css`/`script.js`/`data/*.js` com `?v=<versão>`. Ao publicar mudanças de código, **suba a versão** (em `package.json` e nos `?v=` do `index.html`) para o navegador não usar o arquivo antigo por até 10 min.
 
 
 ## Segurança e privacidade

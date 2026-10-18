@@ -529,6 +529,17 @@ main section[id] + section[id] { border-top: 1px solid var(--color-border); }
 .share-banner strong { font-weight: 700; }
 .share-banner .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.7); }
 .share-banner .btn-ghost:hover { background: rgba(255,255,255,.15); border-color: #fff; }
+
+/* ===== Banner do modo edição (dono) ===== */
+.edit-banner {
+  color: #fff;
+  padding-block: var(--space-2);
+}
+.edit-banner--active { background: var(--color-primary-dark); }
+.edit-banner--error { background: var(--color-terra-strong); }
+.edit-banner p { margin: 0; font-size: var(--fs-sm); }
+.edit-banner .btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.7); }
+.edit-banner .btn-ghost:hover { background: rgba(255,255,255,.15); border-color: #fff; }
 .step input[type=checkbox]:disabled,
 .ckpt-item input[type=checkbox]:disabled {
   opacity: .55;
@@ -537,7 +548,7 @@ main section[id] + section[id] { border-top: 1px solid var(--color-border); }
 .hero-actions { margin-top: var(--space-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .action-status { font-size: var(--fs-sm); color: var(--color-muted); min-height: 1em; }
 .action-status-saving { color: var(--color-muted); }
-.action-status-saved { color: var(--color-moss-strong, var(--color-terra-strong)); }
+.action-status-saved { color: var(--color-primary-dark); }
 .action-status-error { color: var(--color-terra-strong); font-weight: 600; }
 
 /* ===== Hero de progresso ===== */

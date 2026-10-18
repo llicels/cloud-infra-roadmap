@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -86,11 +86,15 @@ function makeFetch(store) {
   };
 }
 
-function boot(store, hash, cfg) {
+function boot(store, hash, cfg, seed) {
   const dom = new JSDOM(html, {
     url: 'https://roadmap.local/' + (hash || ''),
     runScripts: 'outside-only',
-    pretendToBeVisual: true
+    pretendToBeVisual: true,
+    virtualConsole: new VirtualConsole()
+  });
+  Object.keys(seed || {}).forEach(function (k) {
+    dom.window.localStorage.setItem(k, seed[k]);
   });
   dom.window.fetch = makeFetch(store);
   dom.window.eval(dataSrc);
@@ -167,6 +171,7 @@ function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   t('css chips com min-width 0', /\.stage-chips > li\s*\{\s*min-width:\s*0/.test(cssSrc));
   t('css chip-bar com display block', /\.chip-bar\s*\{[^}]*display:\s*block/.test(cssSrc));
   t('nav sem scroll interno', !/\.nav-inner\s*\{[^}]*overflow-x:\s*auto/.test(cssSrc));
+  t('html com cache-busting nos assets', /style\.css\?v=/.test(html) && /script\.js\?v=/.test(html));
 
   /* ================= Edição (dono destravado por token) ================= */
   const eStore = { validToken: TOKEN, pushes: [], payload: PAYLOAD };
@@ -180,6 +185,8 @@ function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   t('edit: token lembrado no navegador', eDom.window.localStorage.getItem('cloud-infra-roadmap-token') === TOKEN);
   t('edit: carrega progresso do gist', /3 de 69/.test(edoc.querySelector('.hero-sub').textContent));
   t('edit: rodape sincronizacao', /sincronizado/.test(edoc.getElementById('footer-site').textContent));
+  t('edit: banner de edicao ativo', !edoc.getElementById('edit-banner').hidden && /edit-banner--active/.test(edoc.getElementById('edit-banner').className));
+  t('edit: botao sair visivel', !edoc.getElementById('edit-exit').hidden);
 
   const cb = edoc.getElementById('e1-b2-s1');
   cb.checked = true;
@@ -197,10 +204,30 @@ function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   ck.dispatchEvent(new eDom.window.Event('change', { bubbles: true }));
   t('edit: checkpoint nao mexe no geral', /4 de 69/.test(edoc.querySelector('.hero-sub').textContent));
 
+  edoc.getElementById('edit-exit').click();
+  t('edit: sair remove o token salvo', eDom.window.localStorage.getItem('cloud-infra-roadmap-token') === null);
+
   /* ================= Token inválido continua somente leitura ================= */
   const badStore = { validToken: TOKEN, pushes: [], payload: PAYLOAD };
   const badDom = await boot(badStore, '#edit=errado', config());
-  t('edit: token invalido fica somente leitura', !badDom.window.document.getElementById('share-banner').hidden && badDom.window.document.getElementById('e1-b1-s1').disabled);
+  const bdoc = badDom.window.document;
+  t('edit: token invalido fica somente leitura', !bdoc.getElementById('share-banner').hidden && bdoc.getElementById('e1-b1-s1').disabled);
+  t('edit: token invalido mostra banner de erro', !bdoc.getElementById('edit-banner').hidden && /edit-banner--error/.test(bdoc.getElementById('edit-banner').className));
+  t('edit: banner de erro sem botao sair', bdoc.getElementById('edit-exit').hidden);
+
+  /* ================= URL sem #edit: token salvo NÃO destrava ================= */
+  const lockedStore = { validToken: TOKEN, pushes: [], payload: PAYLOAD };
+  const lockedDom = await boot(lockedStore, '', config(), { 'cloud-infra-roadmap-token': TOKEN });
+  t('trava: token salvo sem #edit nao edita', lockedDom.window.document.getElementById('e1-b1-s1').disabled);
+  t('trava: sem banner de edicao', lockedDom.window.document.getElementById('edit-banner').hidden);
+
+  const semiStore = { validToken: TOKEN, pushes: [], payload: PAYLOAD };
+  const semiDom = await boot(semiStore, '#edit', config(), { 'cloud-infra-roadmap-token': TOKEN });
+  t('destrava: #edit sem token usa o token salvo', !semiDom.window.document.getElementById('e1-b1-s1').disabled);
+
+  const noneDom = await boot({ validToken: TOKEN, pushes: [], payload: PAYLOAD }, '#edit', config(), {});
+  t('destrava: #edit sem token nenhum fica leitura', noneDom.window.document.getElementById('e1-b1-s1').disabled);
+  t('destrava: erro visivel sem token', /edit-banner--error/.test(noneDom.window.document.getElementById('edit-banner').className));
 
   /* ================= Sem configuração: padrão somente leitura ================= */
   const uStore = { validToken: null, pushes: [], payload: null };

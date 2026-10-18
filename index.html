@@ -6,7 +6,7 @@
   <meta name="description" content="Aplicação de acompanhamento do Cloud &amp; Infra Roadmap 4.1: etapas, materiais e progresso de estudo de Linux, redes, Docker, Kubernetes, Azure, IaC, CI/CD e observabilidade.">
   <title>Cloud &amp; Infra Roadmap 4.1</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=4.2.0">
 </head>
 <body>
   <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
@@ -35,6 +35,13 @@
     <div class="container banner-inner">
       <p><span id="share-lead">Você está vendo um <strong>instantâneo compartilhado</strong></span> (<span id="share-date"></span>) — somente leitura, não altera seu progresso.</p>
       <button type="button" id="share-exit" class="btn-ghost">Sair e ver meu progresso</button>
+    </div>
+  </div>
+
+  <div id="edit-banner" class="edit-banner edit-banner--active" role="status" hidden>
+    <div class="container banner-inner">
+      <p id="edit-message"></p>
+      <button type="button" id="edit-exit" class="btn-ghost" hidden>Sair do modo edição</button>
     </div>
   </div>
 
@@ -79,8 +86,8 @@
     <p class="noscript-warning">Esta aplicação precisa de JavaScript para exibir o roadmap e acompanhar o progresso. Ative o JavaScript no navegador.</p>
   </noscript>
 
-  <script src="data/roadmap.js"></script>
-  <script src="data/progress.js"></script>
-  <script src="script.js"></script>
+  <script src="data/roadmap.js?v=4.2.0"></script>
+  <script src="data/progress.js?v=4.2.0"></script>
+  <script src="script.js?v=4.2.0"></script>
 </body>
 </html>

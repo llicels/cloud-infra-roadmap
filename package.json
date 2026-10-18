@@ -1,6 +1,6 @@
 {
   "name": "cloud-infra-roadmap",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
   "description": "Tracker estatico do Cloud & Infra Roadmap 4.1 (HTML/CSS/JS puro)",
   "scripts": {

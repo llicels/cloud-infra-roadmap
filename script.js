@@ -308,6 +308,11 @@
     return /[#&]s=([A-Za-z0-9_-]+)/.test(window.location.hash || '');
   }
 
+  /** true se a URL pede o modo edição (#edit, com ou sem token). */
+  function hasEditHash() {
+    return /[#&]edit(=|&|$)/.test(window.location.hash || '');
+  }
+
   function storedToken() {
     try {
       return window.localStorage.getItem(TOKEN_KEY) || null;
@@ -321,6 +326,38 @@
       window.localStorage.setItem(TOKEN_KEY, value);
     } catch (err) {
       /* localStorage indisponível: o desbloqueio dura só a sessão */
+    }
+  }
+
+  /** Botão "Sair do modo edição": limpa o token salvo e volta ao somente leitura. */
+  function clearOwner() {
+    try {
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch (err) {
+      /* sem localStorage: basta sair recarregando sem o #edit */
+    }
+    window.location.hash = '';
+    window.location.reload();
+  }
+
+  /** Mostra o banner de estado do modo edição (ativo/erro). */
+  function showEditBanner(kind, message) {
+    const banner = document.getElementById('edit-banner');
+    if (!banner) {
+      return;
+    }
+    const label = document.getElementById('edit-message');
+    if (label) {
+      label.textContent = message;
+    }
+    banner.className = 'edit-banner edit-banner--' + kind;
+    banner.removeAttribute('hidden');
+    const exit = document.getElementById('edit-exit');
+    if (exit) {
+      exit.hidden = kind !== 'active';
+      if (kind === 'active') {
+        exit.addEventListener('click', clearOwner);
+      }
     }
   }
 
@@ -444,7 +481,10 @@
       if (!res.ok) { throw new Error('HTTP ' + res.status); }
       setStatus('saved', 'Salvo ' + new Date().toLocaleTimeString('pt-BR'));
     }).catch(function (err) {
-      setStatus('error', 'Falha ao salvar (' + err.message + ').');
+      const hint = /40[13]/.test(err.message)
+        ? ' — verifique se o token tem "Gists: read and write".'
+        : '.';
+      setStatus('error', 'Falha ao salvar (' + err.message + ')' + hint);
     });
   }
 
@@ -1093,7 +1133,9 @@
     index = buildIndex();
 
     const hashToken = readEditToken();
-    const candidate = hashToken || storedToken();
+    const editRequested = hashToken !== null || hasEditHash();
+    // O token salvo só vale quando a URL pede #edit: a URL pública fica sempre travada.
+    const candidate = hashToken || (editRequested ? storedToken() : null);
     const unlock = (candidate && gistId())
       ? verifyToken(candidate).then(function (ok) {
           if (!ok) {
@@ -1128,6 +1170,11 @@
       updateFooterNote();
       if (viewMode) {
         enterViewModeUi();
+      }
+      if (mode === 'edit') {
+        showEditBanner('active', 'Modo edição ativo — suas marcações são salvas no GitHub Gist.');
+      } else if (editRequested && mode !== 'share') {
+        showEditBanner('error', 'Token inválido ou sem permissão. Verifique se ele tem "Gists: read and write".');
       }
     });
   }
