@@ -6,13 +6,22 @@
   'use strict';
 
   const STORAGE_KEY = 'cloud-infra-roadmap-v1';
+  const OWNER_KEY = 'cloud-infra-roadmap-owner';
   const STORAGE_VERSION = 1;
   const UNAVAILABLE_NOTE = 'Não foi possível salvar localmente neste navegador. O progresso vale apenas nesta sessão.';
+
+  /**
+   * Modos de exibição (decididos em decideMode()):
+   * - 'edit'  : editável (dono via #edit=<token> ou ainda sem snapshot publicado).
+   * - 'share' : instantâneo avulso via #s=… — somente leitura.
+   * - 'owner' : snapshot publicado em data/progress.js — somente leitura (padrão p/ visitantes).
+   */
+  let mode = 'edit';
 
   let data = null;
   let index = null;
   let storageAvailable = true;
-  let viewMode = false; // snapshot compartilhado via #s= — somente leitura, sem persistir
+  let viewMode = false; // modo somente leitura ('share' ou 'owner') — não persiste
 
   const state = { tasks: {}, checkpoint: {} };
 
@@ -226,11 +235,150 @@
     if (!noteEl) {
       return;
     }
-    if (storageAvailable && data && data.meta && data.meta.localNote) {
+    if (mode === 'owner') {
+      noteEl.textContent = 'Progresso publicado pelo dono do roadmap — somente leitura, não editável.';
+    } else if (mode === 'share') {
+      noteEl.textContent = 'Instantâneo compartilhado — somente leitura, não editável.';
+    } else if (storageAvailable && data && data.meta && data.meta.localNote) {
       noteEl.textContent = data.meta.localNote;
     } else if (!storageAvailable) {
       noteEl.textContent = UNAVAILABLE_NOTE;
     }
+  }
+
+  /* ---------------- Dono: modo edição por token secreto ----------------
+   * O site publicado é somente leitura por padrão. Para editar, abra
+   *   <site>/#edit=<token>
+   * onde o SHA-256 do token confere com editHash em data/progress.js.
+   * Só o hash fica no código público; o token (alta entropia) não é revelado.
+   * Ao validar, o navegador do dono fica "desbloqueado" (localStorage), para
+   * não precisar colar o token toda vez. */
+
+  function sha256Hex(message) {
+    function rotr(n, x) { return (n >>> x) | (n << (32 - x)); }
+    const K = [
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+
+    const bytes = [];
+    for (let i = 0; i < message.length; i += 1) {
+      let c = message.charCodeAt(i);
+      if (c < 0x80) { bytes.push(c); }
+      else if (c < 0x800) { bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63)); }
+      else if (c < 0xd800 || c >= 0xe000) { bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }
+      else {
+        i += 1;
+        c = 0x10000 + (((c & 0x3ff) << 10) | (message.charCodeAt(i) & 0x3ff));
+        bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      }
+    }
+
+    const bitLen = bytes.length * 8;
+    bytes.push(0x80);
+    while (bytes.length % 64 !== 56) { bytes.push(0); }
+    for (let i = 7; i >= 0; i -= 1) { bytes.push(Math.floor(bitLen / Math.pow(2, i * 8)) & 0xff); }
+
+    const words = [];
+    for (let i = 0; i < bytes.length; i += 4) {
+      words.push(((bytes[i] << 24) | (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3]) >>> 0);
+    }
+
+    let h0 = H[0], h1 = H[1], h2 = H[2], h3 = H[3], h4 = H[4], h5 = H[5], h6 = H[6], h7 = H[7];
+    const w = new Array(64);
+    for (let i = 0; i < words.length; i += 16) {
+      for (let t = 0; t < 16; t += 1) { w[t] = words[i + t]; }
+      for (let t = 16; t < 64; t += 1) {
+        const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+        const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+        w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+      }
+      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, hh = h7;
+      for (let t = 0; t < 64; t += 1) {
+        const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        const ch = (e & f) ^ (~e & g);
+        const temp1 = (hh + S1 + ch + K[t] + w[t]) >>> 0;
+        const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (S0 + maj) >>> 0;
+        hh = g; g = f; f = e; e = (d + temp1) >>> 0; d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+      }
+      h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+      h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + hh) >>> 0;
+    }
+    return [h0, h1, h2, h3, h4, h5, h6, h7].map(function (x) {
+      return ('00000000' + x.toString(16)).slice(-8);
+    }).join('');
+  }
+
+  function ownerConfig() {
+    const p = window.OWNER_PROGRESS;
+    return p && typeof p === 'object' ? p : {};
+  }
+
+  function ownerHash() {
+    const h = ownerConfig().editHash;
+    return typeof h === 'string' ? h.trim().toLowerCase() : '';
+  }
+
+  function ownerSnapshot() {
+    const s = ownerConfig().snapshot;
+    if (typeof s !== 'string') { return ''; }
+    const trimmed = s.trim();
+    if (!trimmed) { return ''; }
+    const m = /[#&]s=([A-Za-z0-9_-]+)/.exec(trimmed);
+    return (m ? m[1] : trimmed).replace(/[^A-Za-z0-9_-]/g, '');
+  }
+
+  function lockedInLocalStorage() {
+    try {
+      return window.localStorage.getItem(OWNER_KEY) === '1';
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function rememberOwner() {
+    try {
+      window.localStorage.setItem(OWNER_KEY, '1');
+    } catch (err) {
+      /* localStorage indisponível: o desbloqueio dura só a sessão */
+    }
+  }
+
+  function readEditToken() {
+    const m = /[#&]edit=([A-Za-z0-9_-]+)/.exec(window.location.hash || '');
+    return m ? m[1] : null;
+  }
+
+  function hasShareHash() {
+    return /[#&]s=([A-Za-z0-9_-]+)/.test(window.location.hash || '');
+  }
+
+  /** Decide o modo antes de renderizar. Ver comentário no topo dos modos. */
+  function decideMode() {
+    const token = readEditToken();
+    if (token && ownerHash() && sha256Hex(token) === ownerHash()) {
+      rememberOwner();
+      return 'edit';
+    }
+    if (hasShareHash()) {
+      return 'share';
+    }
+    if (lockedInLocalStorage()) {
+      return 'edit';
+    }
+    if (ownerSnapshot()) {
+      return 'owner';
+    }
+    return 'edit';
   }
 
   /* ---------------- Compartilhar: instantâneo via #s= (sem backend) ----------------
@@ -239,6 +387,7 @@
    * gravado no localStorage de quem recebe. */
 
   let shareDate = null;
+  let ownerDate = null;
 
   function packBits(bits) {
     const bytes = [];
@@ -311,17 +460,8 @@
     }
   }
 
-  function applyShare() {
-    const m = /[#&]s=([A-Za-z0-9_-]+)/.exec(window.location.hash || '');
-    if (!m) {
-      return;
-    }
-    const snap = decodeShare(m[1]);
-    if (!snap) {
-      return;
-    }
-    viewMode = true;
-    shareDate = snap.date;
+  /** Aplica um snapshot decodificado ao estado (somente leitura). */
+  function applySnapshot(snap) {
     snap.tasks.forEach(function (bit, i) {
       if (bit) {
         state.tasks[index.allTaskIds[i]] = true;
@@ -334,23 +474,71 @@
     });
   }
 
+  /** Instantâneo avulso no hash (#s=). Retorna true se aplicado. */
+  function applyShare() {
+    const m = /[#&]s=([A-Za-z0-9_-]+)/.exec(window.location.hash || '');
+    if (!m) {
+      return false;
+    }
+    const snap = decodeShare(m[1]);
+    if (!snap) {
+      return false;
+    }
+    shareDate = snap.date;
+    applySnapshot(snap);
+    return true;
+  }
+
+  /** Snapshot publicado em data/progress.js (#owner). Retorna true se aplicado. */
+  function applyOwnerSnapshot() {
+    const src = ownerSnapshot();
+    if (!src) {
+      return false;
+    }
+    const snap = decodeShare(src);
+    if (!snap) {
+      return false;
+    }
+    ownerDate = snap.date;
+    applySnapshot(snap);
+    return true;
+  }
+
   function enterViewModeUi() {
     const banner = document.getElementById('share-banner');
     if (!banner) {
       return;
     }
     banner.removeAttribute('hidden');
+    const lead = document.getElementById('share-lead');
     const label = document.getElementById('share-date');
-    if (label && shareDate) {
-      label.textContent = 'instantâneo de ' + shareDate.toLocaleDateString('pt-BR');
-    }
     const exit = document.getElementById('share-exit');
-    if (exit) {
-      exit.addEventListener('click', function () {
-        window.location.hash = '';
-        window.location.reload();
-      });
+
+    if (mode === 'owner') {
+      if (lead) {
+        const name = ownerConfig().owner;
+        lead.textContent = name ? 'Progresso de ' + name : 'Progresso publicado';
+      }
+      if (label) {
+        label.textContent = ownerDate
+          ? 'atualizado em ' + ownerDate.toLocaleDateString('pt-BR')
+          : 'snapshot publicado';
+      }
+      if (exit) {
+        exit.remove(); // visitante não tem "próprio progresso" para ver
+      }
+    } else {
+      if (label && shareDate) {
+        label.textContent = 'instantâneo de ' + shareDate.toLocaleDateString('pt-BR');
+      }
+      if (exit) {
+        exit.addEventListener('click', function () {
+          window.location.hash = '';
+          window.location.reload();
+        });
+      }
     }
+
     document.querySelectorAll('input[type=checkbox]').forEach(function (cb) {
       cb.disabled = true;
     });
@@ -361,15 +549,16 @@
   }
 
   function copyText(text, btn) {
+    const original = btn.textContent;
     btn.dataset.url = text;
-    const ok = function () { btn.textContent = 'Link copiado!'; };
-    const fail = function () { btn.textContent = 'Copie o link de Compartilhar'; };
+    const ok = function () { btn.textContent = 'Copiado!'; };
+    const fail = function () { btn.textContent = 'Não foi possível copiar'; };
     if (window.navigator && window.navigator.clipboard && window.navigator.clipboard.writeText) {
       window.navigator.clipboard.writeText(text).then(ok, fail);
     } else {
       fail();
     }
-    window.setTimeout(function () { btn.textContent = 'Compartilhar meu progresso'; }, 3000);
+    window.setTimeout(function () { btn.textContent = original; }, 3000);
   }
 
   /* ---------------- Estado -> ações ---------------- */
@@ -601,7 +790,15 @@
       shareBtn.addEventListener('click', function () {
         copyText(window.location.origin + window.location.pathname + '#s=' + b64urlEncode(encodeShare()), shareBtn);
       });
-      statsCol.appendChild(el('div', { class: 'hero-actions' }, [shareBtn]));
+      const actions = [shareBtn];
+      if (ownerHash()) {
+        const publishBtn = el('button', { type: 'button', class: 'btn-ghost btn-publish', text: 'Copiar progresso para publicar' });
+        publishBtn.addEventListener('click', function () {
+          copyText(b64urlEncode(encodeShare()), publishBtn);
+        });
+        actions.push(publishBtn);
+      }
+      statsCol.appendChild(el('div', { class: 'hero-actions' }, actions));
     }
 
     const chips = el('ul', { class: 'stage-chips' });
@@ -817,8 +1014,19 @@
       return;
     }
     index = buildIndex();
-    hydrate(readStored());
-    applyShare();
+    mode = decideMode();
+
+    if (mode === 'share' && !applyShare()) {
+      mode = ownerSnapshot() ? 'owner' : 'edit';
+    }
+    if (mode === 'owner' && !applyOwnerSnapshot()) {
+      mode = 'edit';
+    }
+    viewMode = mode === 'share' || mode === 'owner';
+    if (mode === 'edit') {
+      hydrate(readStored());
+    }
+
     renderStages();
     renderOverview();
     renderMaterials();

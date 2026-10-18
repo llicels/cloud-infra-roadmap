@@ -14,7 +14,10 @@ cloud-infra-roadmap/
 ├── style.css         # identidade visual (paleta terrosa/verde-musgo, mobile-first, a11y)
 ├── script.js         # renderização, checklists, progresso, persistência
 ├── data/
-│   └── roadmap.js    # conteúdo integral estruturado (7 etapas, 30 blocos, 69 atividades)
+│   ├── roadmap.js    # conteúdo integral estruturado (7 etapas, 30 blocos, 69 atividades)
+│   └── progress.js   # configuração do dono (snapshot publicado + hash do token)
+├── scripts/
+│   └── owner-token.js  # gera token secreto + hash (npm run owner-token)
 ├── tests/
 │   └── test-app.js   # harness jsdom (npm test)
 ├── _headers          # headers de segurança para Cloudflare Pages
@@ -45,7 +48,32 @@ Acesse `http://localhost:8080`.
 - **Checkpoint final independente**: 11 competências com estado próprio — marcar o checkpoint não afeta as atividades semanais, e vice-versa.
 - **Persistência** em `localStorage` (chave `cloud-infra-roadmap-v1`), com recuperação após recarregar ou reabrir.
 - **Materiais**: links para as páginas oficiais embutidas no PDF original, validados.
+- **Site público somente leitura**: o objetivo é as pessoas **verem o seu progresso**, não editarem o delas. Por padrão, quem abre a URL principal vê o snapshot publicado em `data/progress.js`, com checkboxes desabilitados, aviso "somente leitura" e sem botões de ação. Só você, com a URL secreta `#edit=<token>`, entra no modo de edição.
 - **Compartilhar progresso (instantâneo)**: o botão "Compartilhar meu progresso" gera um link com o estado atual codificado no hash da URL (`#s=…`). Quem abrir vê exatamente esse progresso, em **modo somente leitura** (com aviso e data do instantâneo), sem sobrescrever o próprio. É estático: cada link é uma fotografia, não sincronização em tempo real.
+
+## Três modos de exibição
+
+| Modo | Como entra | O que mostra |
+| --- | --- | --- |
+| Visitante (padrão) | URL normal, sem hash | Seu snapshot publicado (`data/progress.js`), **somente leitura** |
+| Snapshot avulso | URL com `#s=…` | Progresso congelado no link, **somente leitura** |
+| Edição (dono) | URL com `#edit=<token>` válido | Tracker editável, salvo no seu navegador |
+
+O token de edição nunca vai para o repositório: só o **SHA-256** dele fica em `data/progress.js`. Ao validar, seu navegador fica desbloqueado (localStorage), para não redigitar o token a cada visita.
+
+## Publicar seu progresso (fluxo do dono)
+
+1. **Uma vez** — gere o token e o hash:
+   ```bash
+   npm run owner-token
+   ```
+   Cole o valor de `editHash` em `data/progress.js` e guarde o `TOKEN` no gerenciador de senhas.
+2. Abra o site publicado com `#edit=<TOKEN>` (ex.: `https://llicels.github.io/cloud-infra-roadmap/#edit=…`).
+3. Marque suas atividades (salvas no seu navegador) e clique em **"Copiar progresso para publicar"**.
+4. Cole a string copiada em `data/progress.js` no campo `snapshot` e ajuste `updated` (AAAA-MM-DD).
+5. `git push` — o GitHub Pages republica em ~1 min e todos passam a ver seu progresso atualizado, somente leitura.
+
+> Enquanto `snapshot` estiver vazio, a URL principal cai no modo normal (editável) — útil para o primeiro uso.
 
 ### Contraste
 
@@ -63,10 +91,10 @@ A paleta base do SDD (§2.2) foi mantida, mas os tokens de apoio foram escurecid
 ```bash
 cd cloud-infra-roadmap/
 npm install
-npm test        # node tests/test-app.js — 34 asserções em jsdom
+npm test        # node tests/test-app.js — 85 asserções em jsdom
 ```
 
-O harness cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa/bloco, classe `done` + badge "Concluída", persistência e restauração via `localStorage`, tolerância a JSON corrompido, `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes e conteúdo obrigatório do roadmap.
+O harness cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa/bloco, classe `done` + badge "Concluída", persistência e restauração via `localStorage`, tolerância a JSON corrompido, `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes, conteúdo obrigatório do roadmap e os **três modos** (visitante somente leitura via `data/progress.js`, snapshot `#s=`, edição por `#edit=<token>` com hash válido/inválido e prioridade do `#s=`).
 
 ## Site publicado
 
@@ -118,7 +146,9 @@ npx vercel --prod
 ## Segurança e privacidade
 
 - Nenhum segredo, credencial ou dado pessoal no código.
-- O progresso fica **somente no navegador** do usuário (localStorage). Outras pessoas só veem o que você decidir mostrar, via link de instantâneo — nada é enviado a servidores.
+- O progresso fica **somente no navegador** do usuário (localStorage). Outras pessoas só veem o snapshot que você publicar em `data/progress.js` — nada é enviado a servidores.
+- O progresso publicado só muda por `git push`: mesmo que alguém descubra o modo de edição, as alterações ficam no navegador da própria pessoa e não afetam o site.
+- Em site estático público não há autenticação real — o token (`#edit=`) é UX/anti-confusão, não uma barreira de segurança. Com token de alta entropia, o hash commitado não revela o token.
 - Sem analytics, sem scripts de terceiros, sem cookies.
 - Links externos abrem com `rel="noopener noreferrer"`; apenas URLs `https:` dos dados são renderizadas como link.
 

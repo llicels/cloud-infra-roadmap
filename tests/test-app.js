@@ -2,9 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 
+const crypto = require('crypto');
+
 const ROOT = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const dataSrc = fs.readFileSync(path.join(ROOT, 'data/roadmap.js'), 'utf8');
+const progressSrc = fs.readFileSync(path.join(ROOT, 'data/progress.js'), 'utf8');
 const scriptSrc = fs.readFileSync(path.join(ROOT, 'script.js'), 'utf8');
 
 let pass = 0, fail = 0;
@@ -13,10 +16,11 @@ function t(name, cond) {
   else { fail++; console.log('FALHOU:', name); }
 }
 
-function boot(seed, hash) {
+function boot(seed, hash, progressOverride) {
   const dom = new JSDOM(html, { url: 'https://roadmap.local/' + (hash || ''), runScripts: 'outside-only', pretendToBeVisual: true });
   if (seed) dom.window.localStorage.setItem('cloud-infra-roadmap-v1', seed);
   dom.window.eval(dataSrc);
+  dom.window.eval(progressOverride === undefined ? progressSrc : progressOverride);
   dom.window.eval(scriptSrc);
   const evt = dom.window.document.createEvent('Event');
   evt.initEvent('DOMContentLoaded', true, true);
@@ -119,6 +123,42 @@ t('view: nao grava localStorage alheio', domS.window.localStorage.getItem('cloud
 t('view: sem botao de share', !domS.window.document.querySelector('.btn-share'));
 const domBad = boot(null, '#s=zz');
 t('hash invalido cai em modo normal', domBad.window.document.getElementById('share-banner').hidden && !domBad.window.document.getElementById('e1-b1-s1').disabled);
+
+// --- progresso do dono publicado (data/progress.js) -> somente leitura ---
+const shareToken = shareUrl.slice(shareUrl.indexOf('#s=') + 3);
+function ownerProgress(obj) { return 'window.OWNER_PROGRESS = ' + JSON.stringify(obj) + ';'; }
+const token = 'segredo-de-teste-com-alta-entropia';
+const hash = crypto.createHash('sha256').update(token).digest('hex');
+
+const domO = boot(null, '', ownerProgress({ owner: 'Ana', updated: '2026-10-01', snapshot: shareToken, editHash: '' }));
+const docO = domO.window.document;
+t('owner: banner visivel', !docO.getElementById('share-banner').hidden);
+t('owner: banner com nome', /Progresso de Ana/.test(docO.getElementById('share-lead').textContent));
+t('owner: banner com data do snapshot', /atualizado em \d{2}\/\d{2}\/\d{4}/.test(docO.getElementById('share-date').textContent));
+t('owner: todos checkboxes desabilitados', [...docO.querySelectorAll('input[type=checkbox]')].every(cb => cb.disabled));
+t('owner: replica progresso (3 de 69)', /3 de 69 atividades concluídas/.test(docO.querySelector('.hero-sub').textContent));
+t('owner: sem botao de share', !docO.querySelector('.btn-share'));
+t('owner: sem botao de publicar', !docO.querySelector('.btn-publish'));
+t('owner: sem botao sair', !docO.getElementById('share-exit'));
+t('owner: rodape somente leitura', /somente leitura/.test(docO.getElementById('footer-site').textContent));
+t('owner: nao grava localStorage alheio', domO.window.localStorage.getItem('cloud-infra-roadmap-v1') === null);
+
+// --- modo edicao por token (#edit=) ---
+const domE = boot(null, '#edit=' + token, ownerProgress({ owner: 'Ana', updated: '2026-10-01', snapshot: shareToken, editHash: hash }));
+const docE = domE.window.document;
+t('edit: banner oculto', docE.getElementById('share-banner').hidden);
+t('edit: checkboxes habilitados', !docE.getElementById('e1-b1-s1').disabled);
+t('edit: botao share presente', !!docE.querySelector('.btn-share'));
+t('edit: botao publicar presente', !!docE.querySelector('.btn-publish'));
+t('edit: desbloqueio lembrado no localStorage', domE.window.localStorage.getItem('cloud-infra-roadmap-owner') === '1');
+
+// --- token errado continua somente leitura ---
+const domW = boot(null, '#edit=errado', ownerProgress({ owner: 'Ana', updated: '2026-10-01', snapshot: shareToken, editHash: hash }));
+t('edit: token errado fica somente leitura', !domW.window.document.getElementById('share-banner').hidden && domW.window.document.getElementById('e1-b1-s1').disabled);
+
+// --- #s= valido tem prioridade sobre o snapshot do dono ---
+const domP = boot(null, '#s=' + shareToken, ownerProgress({ owner: 'Ana', updated: '2026-10-01', snapshot: 'invalido-nao-usado', editHash: '' }));
+t('prioridade: #s= vence o snapshot do dono', !domP.window.document.getElementById('share-banner').hidden && /instantâneo de/.test(domP.window.document.getElementById('share-date').textContent));
 
 // --- persistencia apos recarga ---
 const stored = window.localStorage.getItem('cloud-infra-roadmap-v1');

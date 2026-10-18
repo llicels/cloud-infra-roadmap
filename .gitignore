@@ -9,3 +9,6 @@ Thumbs.db
 # Node (deploy)
 node_modules/
 .wrangler/
+
+# Segredo local do dono (token de edição em texto claro)
+owner.secret
