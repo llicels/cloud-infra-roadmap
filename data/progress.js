@@ -1,23 +1,23 @@
 /**
- * Configuração do dono do roadmap.
+ * Configuração do dono do roadmap (progresso em GitHub Gist).
  *
- * Este é o ÚNICO arquivo que você atualiza para publicar seu progresso.
+ * Somente dados PÚBLICOS ficam aqui. O token de escrita nunca é commitado.
  *
  * - owner    : nome exibido aos visitantes (opcional).
- * - updated  : data ISO (AAAA-MM-DD) do último snapshot publicado (opcional).
- * - snapshot : seu progresso codificado. Abra o site com #edit=<token>, marque
- *              as atividades e clique em "Copiar progresso para publicar";
- *              cole aqui a string gerada (aceita também a URL inteira com #s=).
- *              Enquanto estiver vazio, o site cai no modo normal.
- * - editHash : SHA-256 (hex) do seu token secreto de edição. Gere com
- *              `npm run owner-token`. Enquanto estiver vazio, o modo de
- *              edição por token fica desativado.
+ * - gistUser : seu usuário do GitHub (dono do gist).
+ * - gistId   : ID do gist que guarda o progresso.
+ * - gistFile : nome do arquivo dentro do gist (padrão: progress.json).
  *
- * Nada aqui é seguro por si só: o progresso publicado só muda com git push.
+ * Como funciona:
+ * - Visitantes LEEM o gist e veem o progresso em modo somente leitura.
+ * - Você abre <site>/#edit=<token> (token fine-grained com "Gists: read and write");
+ *   o token fica salvo no seu navegador e cada marcação é enviada ao gist sozinha.
+ *
+ * Ver o passo a passo no README ("Publicar seu progresso").
  */
 window.OWNER_PROGRESS = {
   owner: "",
-  updated: "",
-  snapshot: "",
-  editHash: "2f3979590b7dd357ac5b4efa1779f58a6545d3fa2638b3cadaf7ed588b6db47a"
+  gistUser: "llicels",
+  gistId: "93e8f232649a05afdbdf1a2910fd9bc2",
+  gistFile: "progress.json"
 };

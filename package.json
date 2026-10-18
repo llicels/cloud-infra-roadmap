@@ -5,8 +5,7 @@
   "description": "Tracker estatico do Cloud & Infra Roadmap 4.1 (HTML/CSS/JS puro)",
   "scripts": {
     "test": "node tests/test-app.js",
-    "start": "python3 -m http.server 8080",
-    "owner-token": "node scripts/owner-token.js"
+    "start": "python3 -m http.server 8080"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"

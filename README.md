@@ -12,12 +12,10 @@ Aplicação web estática que reproduz integralmente o **Cloud & Infra Roadmap 4
 cloud-infra-roadmap/
 ├── index.html        # casca semântica (header, nav, seções, footer)
 ├── style.css         # identidade visual (paleta terrosa/verde-musgo, mobile-first, a11y)
-├── script.js         # renderização, checklists, progresso, persistência
+├── script.js         # renderização, checklists, progresso, sync com GitHub Gist
 ├── data/
 │   ├── roadmap.js    # conteúdo integral estruturado (7 etapas, 30 blocos, 69 atividades)
-│   └── progress.js   # configuração do dono (snapshot publicado + hash do token)
-├── scripts/
-│   └── owner-token.js  # gera token secreto + hash (npm run owner-token)
+│   └── progress.js   # configuração pública do dono (owner, gistUser, gistId)
 ├── tests/
 │   └── test-app.js   # harness jsdom (npm test)
 ├── _headers          # headers de segurança para Cloudflare Pages
@@ -46,34 +44,39 @@ Acesse `http://localhost:8080`.
 - **Checklists interativas**: 69 atividades marcáveis (itens "Faça" dos blocos). Os 4 itens de restrição do roadmap aparecem como *Observação* não-marcável.
 - **Blocos expansíveis** (`details`/`summary`) com botões "Expandir/recolher todos" (global e por etapa).
 - **Checkpoint final independente**: 11 competências com estado próprio — marcar o checkpoint não afeta as atividades semanais, e vice-versa.
-- **Persistência** em `localStorage` (chave `cloud-infra-roadmap-v1`), com recuperação após recarregar ou reabrir.
+- **Progresso sincronizado (GitHub Gist)**: seu progresso fica num gist e é lido a cada visita. Você marca as atividades com o token destravado e cada mudança é enviada ao gist sozinha (debounce + indicador "Salvando…/Salvo"). Nada de `git push` para atualizar o progresso.
 - **Materiais**: links para as páginas oficiais embutidas no PDF original, validados.
-- **Site público somente leitura**: o objetivo é as pessoas **verem o seu progresso**, não editarem o delas. Por padrão, quem abre a URL principal vê o snapshot publicado em `data/progress.js`, com checkboxes desabilitados, aviso "somente leitura" e sem botões de ação. Só você, com a URL secreta `#edit=<token>`, entra no modo de edição.
-- **Compartilhar progresso (instantâneo)**: o botão "Compartilhar meu progresso" gera um link com o estado atual codificado no hash da URL (`#s=…`). Quem abrir vê exatamente esse progresso, em **modo somente leitura** (com aviso e data do instantâneo), sem sobrescrever o próprio. É estático: cada link é uma fotografia, não sincronização em tempo real.
+- **Site público somente leitura**: o objetivo é as pessoas **verem o seu progresso**, não editarem o delas. A URL principal é **sempre somente leitura** (mesmo sem progresso publicado ou se o gist estiver fora do ar), com checkboxes desabilitados e sem botões de ação. Só você, com `#edit=<token>`, entra no modo de edição.
+- **Compartilhar progresso (instantâneo)**: o botão "Compartilhar meu progresso" gera um link com o estado atual codificado no hash da URL (`#s=…`). Quem abrir vê exatamente esse progresso, em **modo somente leitura** (com aviso e data do instantâneo).
 
 ## Três modos de exibição
 
 | Modo | Como entra | O que mostra |
 | --- | --- | --- |
-| Visitante (padrão) | URL normal, sem hash | Seu snapshot publicado (`data/progress.js`), **somente leitura** |
+| Visitante (padrão) | URL normal, sem hash | Progresso lido do gist, **somente leitura** |
 | Snapshot avulso | URL com `#s=…` | Progresso congelado no link, **somente leitura** |
-| Edição (dono) | URL com `#edit=<token>` válido | Tracker editável, salvo no seu navegador |
+| Edição (dono) | URL com `#edit=<token>` válido | Tracker editável, sincronizado com o gist |
 
-O token de edição nunca vai para o repositório: só o **SHA-256** dele fica em `data/progress.js`. Ao validar, seu navegador fica desbloqueado (localStorage), para não redigitar o token a cada visita.
+O token nunca vai para o repositório: ele é digitado via `#edit=` (validado por uma leitura autenticada) e fica salvo no `localStorage` do seu navegador, para não redigitar a cada visita.
 
 ## Publicar seu progresso (fluxo do dono)
 
-1. **Uma vez** — gere o token e o hash:
-   ```bash
-   npm run owner-token
+1. **Uma vez** — crie um **gist** (pode ser secreto) contendo um arquivo `progress.json` com o conteúdo inicial `{}`.
+2. **Uma vez** — crie um **token fine-grained** do GitHub com a permissão **Gists: read and write** (ou um token clássico com escopo `gist`).
+3. Preencha `data/progress.js` com seu usuário e o ID do gist:
+   ```js
+   window.OWNER_PROGRESS = {
+     owner: "Seu Nome",
+     gistUser: "seu-usuario-github",
+     gistId: "id-do-gist",
+     gistFile: "progress.json"
+   };
    ```
-   Cole o valor de `editHash` em `data/progress.js` e guarde o `TOKEN` no gerenciador de senhas.
-2. Abra o site publicado com `#edit=<TOKEN>` (ex.: `https://llicels.github.io/cloud-infra-roadmap/#edit=…`).
-3. Marque suas atividades (salvas no seu navegador) e clique em **"Copiar progresso para publicar"**.
-4. Cole a string copiada em `data/progress.js` no campo `snapshot` e ajuste `updated` (AAAA-MM-DD).
-5. `git push` — o GitHub Pages republica em ~1 min e todos passam a ver seu progresso atualizado, somente leitura.
+   Faça o `git push` (só dessa configuração; não precisa repetir para o progresso).
+4. Abra o site com `#edit=<TOKEN>` (ex.: `https://llicels.github.io/cloud-infra-roadmap/#edit=…`) e cole o token uma vez.
+5. Marque suas atividades — elas são enviadas ao gist automaticamente. Quem abrir a URL normal vê o progresso atualizado, somente leitura.
 
-> Enquanto `snapshot` estiver vazio, a URL principal cai no modo normal (editável) — útil para o primeiro uso.
+> O ID do gist é público (aparece no código) e tudo bem: a leitura é pública de propósito. O token é o único segredo.
 
 ### Contraste
 
@@ -91,10 +94,10 @@ A paleta base do SDD (§2.2) foi mantida, mas os tokens de apoio foram escurecid
 ```bash
 cd cloud-infra-roadmap/
 npm install
-npm test        # node tests/test-app.js — 85 asserções em jsdom
+npm test        # node tests/test-app.js — 75 asserções em jsdom
 ```
 
-O harness cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa/bloco, classe `done` + badge "Concluída", persistência e restauração via `localStorage`, tolerância a JSON corrompido, `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes, conteúdo obrigatório do roadmap e os **três modos** (visitante somente leitura via `data/progress.js`, snapshot `#s=`, edição por `#edit=<token>` com hash válido/inválido e prioridade do `#s=`).
+O harness (com `fetch` mockado) cobre: contagens (7 etapas / 30 blocos / 69 atividades + 4 observações / 11 checkpoint / 10 materiais), cálculo de progresso geral/etapa, classe `done` + badge "Concluída", `rel="noopener noreferrer"` em links externos, labels associados aos checkboxes, conteúdo obrigatório do roadmap e os **três modos**: visitante somente leitura (lendo o gist), edição destravada por token válido (com envio PATCH ao gist e indicador "Salvo"), token inválido/sem configuração (permanece leitura) e snapshot `#s=`.
 
 ## Site publicado
 
@@ -126,7 +129,7 @@ export CLOUDFLARE_ACCOUNT_ID=<seu account id>
 npx wrangler pages deploy . --project-name cloud-infra-roadmap
 ```
 
-O arquivo `_headers` aplica CSP, `nosniff`, referrer e permissions policies automaticamente no Cloudflare Pages.
+O arquivo `_headers` aplica CSP (incluindo `connect-src` para `api.github.com` e `gist.githubusercontent.com`), `nosniff`, referrer e permissions policies automaticamente no Cloudflare Pages. O GitHub Pages ignora `_headers`.
 
 ### Opção C — Vercel
 
@@ -138,18 +141,17 @@ npx vercel --prod
 
 ### Depois de publicar
 
-- Teste em **janela anônima**.
-- Marque uma atividade, **recarregue** e confirme a persistência (o progresso é por dispositivo/navegador).
+- Teste a URL normal em **janela anônima**: você deve ver seu progresso, tudo desabilitado (somente leitura).
+- Abra com `#edit=<token>`, marque uma atividade e confirme o indicador "Salvo".
 - Valide alguns links de materiais.
 
 
 ## Segurança e privacidade
 
-- Nenhum segredo, credencial ou dado pessoal no código.
-- O progresso fica **somente no navegador** do usuário (localStorage). Outras pessoas só veem o snapshot que você publicar em `data/progress.js` — nada é enviado a servidores.
-- O progresso publicado só muda por `git push`: mesmo que alguém descubra o modo de edição, as alterações ficam no navegador da própria pessoa e não afetam o site.
-- Em site estático público não há autenticação real — o token (`#edit=`) é UX/anti-confusão, não uma barreira de segurança. Com token de alta entropia, o hash commitado não revela o token.
-- Sem analytics, sem scripts de terceiros, sem cookies.
+- Nenhum segredo no código: o token é digitado via `#edit=` e guardado apenas no `localStorage` do seu navegador. O repositório tem só dados públicos (`owner`, `gistUser`, `gistId`).
+- O progresso vive no seu **gist** (leitura pública por design) e é atualizado só por quem tem o token. Visitantes apenas leem.
+- Em site estático público não há autenticação de servidor: a barreira de escrita é o token do GitHub. Se ele vazar, alguém pode sobrescrever seu progresso — revogue/rotacione o token se isso acontecer.
+- Sem analytics, sem cookies, sem scripts de terceiros (só chamadas `fetch` ao GitHub).
 - Links externos abrem com `rel="noopener noreferrer"`; apenas URLs `https:` dos dados são renderizadas como link.
 
 ## Notas de fidelidade
@@ -161,6 +163,8 @@ npx vercel --prod
 
 ## Limitações conhecidas
 
-- Persistência local por navegador: trocar de dispositivo/navegador zera o progresso aparente.
-- Sem botão de reset (deliberado, SDD §10) — para zerar, limpe os dados do site no navegador.
-- `localStorage` indisponível (modo privado restrito): o app funciona na sessão e avisa discretamente no rodapé.
+- Leitura pública usa a API do GitHub (limite ~60 req/h por IP) com fallback para o `raw` (CDN, pode ficar alguns minutos em cache). Para site pessoal é folgado.
+- Para editar em outro dispositivo, é preciso abrir `#edit=<token>` uma vez nele (o token fica salvo por navegador).
+- Se o gist estiver indisponível, visitantes veem 0% (somente leitura) — nunca editável.
+- Sem botão de reset (deliberado, SDD §10) — para zerar, desmarque as atividades ou esvazie o gist.
+- `localStorage` indisponível (modo privado restrito): o dono edita só na sessão e o envio ao gist continua funcionando durante ela.

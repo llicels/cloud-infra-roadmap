@@ -6,22 +6,28 @@
   'use strict';
 
   const STORAGE_KEY = 'cloud-infra-roadmap-v1';
-  const OWNER_KEY = 'cloud-infra-roadmap-owner';
+  const TOKEN_KEY = 'cloud-infra-roadmap-token';
   const STORAGE_VERSION = 1;
   const UNAVAILABLE_NOTE = 'Não foi possível salvar localmente neste navegador. O progresso vale apenas nesta sessão.';
+  const GIST_API = 'https://api.github.com/gists/';
+  const GIST_RAW = 'https://gist.githubusercontent.com/';
 
   /**
-   * Modos de exibição (decididos em decideMode()):
-   * - 'edit'  : editável (dono via #edit=<token> ou ainda sem snapshot publicado).
+   * Modos de exibição:
+   * - 'edit'  : editável — dono destravado (token no #edit= ou salvo no navegador).
    * - 'share' : instantâneo avulso via #s=… — somente leitura.
-   * - 'owner' : snapshot publicado em data/progress.js — somente leitura (padrão p/ visitantes).
+   * - 'owner' : progresso lido do GitHub Gist — somente leitura (padrão p/ visitantes).
+   * A URL pública é SEMPRE somente leitura; editar só com o token do dono.
    */
-  let mode = 'edit';
+  let mode = 'owner';
 
   let data = null;
   let index = null;
   let storageAvailable = true;
-  let viewMode = false; // modo somente leitura ('share' ou 'owner') — não persiste
+  let viewMode = true; // modo somente leitura ('share' ou 'owner') — não persiste
+  let token = null;     // token do gist (só quando destravado)
+  let pushTimer = null; // debounce do envio ao gist
+  let statusEl = null;  // indicador "salvando/salvo" no modo edição
 
   const state = { tasks: {}, checkpoint: {} };
 
@@ -196,20 +202,31 @@
     }
   }
 
+  /** Monta o payload persistido (cache local e conteúdo do gist). */
+  function buildPayload() {
+    return {
+      version: STORAGE_VERSION,
+      tasks: state.tasks,
+      checkpoint: state.checkpoint,
+      updated: new Date().toISOString()
+    };
+  }
+
+  /** Grava o cache local e agenda o envio ao gist (só no modo edição). */
   function save() {
-    if (viewMode || !storageAvailable) {
-      return; // snapshot compartilhado nunca sobrescreve o progresso local
+    if (mode !== 'edit') {
+      return; // visitante nunca persiste
     }
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        version: STORAGE_VERSION,
-        tasks: state.tasks,
-        checkpoint: state.checkpoint
-      }));
-    } catch (err) {
-      storageAvailable = false;
-      updateFooterNote();
+    const payload = buildPayload();
+    if (storageAvailable) {
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        storageAvailable = false;
+        updateFooterNote();
+      }
     }
+    schedulePush();
   }
 
   function hydrate(stored) {
@@ -240,117 +257,46 @@
     } else if (mode === 'share') {
       noteEl.textContent = 'Instantâneo compartilhado — somente leitura, não editável.';
     } else if (storageAvailable && data && data.meta && data.meta.localNote) {
-      noteEl.textContent = data.meta.localNote;
+      noteEl.textContent = 'Progresso salvo no seu navegador e sincronizado com o GitHub Gist.';
     } else if (!storageAvailable) {
       noteEl.textContent = UNAVAILABLE_NOTE;
     }
   }
 
-  /* ---------------- Dono: modo edição por token secreto ----------------
-   * O site publicado é somente leitura por padrão. Para editar, abra
+  /* ---------------- Dono: edição e sincronização via GitHub Gist ----------------
+   * A URL pública é sempre somente leitura. Para editar, abra
    *   <site>/#edit=<token>
-   * onde o SHA-256 do token confere com editHash em data/progress.js.
-   * Só o hash fica no código público; o token (alta entropia) não é revelado.
-   * Ao validar, o navegador do dono fica "desbloqueado" (localStorage), para
-   * não precisar colar o token toda vez. */
-
-  function sha256Hex(message) {
-    function rotr(n, x) { return (n >>> x) | (n << (32 - x)); }
-    const K = [
-      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-    ];
-    const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-
-    const bytes = [];
-    for (let i = 0; i < message.length; i += 1) {
-      let c = message.charCodeAt(i);
-      if (c < 0x80) { bytes.push(c); }
-      else if (c < 0x800) { bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63)); }
-      else if (c < 0xd800 || c >= 0xe000) { bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63)); }
-      else {
-        i += 1;
-        c = 0x10000 + (((c & 0x3ff) << 10) | (message.charCodeAt(i) & 0x3ff));
-        bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-      }
-    }
-
-    const bitLen = bytes.length * 8;
-    bytes.push(0x80);
-    while (bytes.length % 64 !== 56) { bytes.push(0); }
-    for (let i = 7; i >= 0; i -= 1) { bytes.push(Math.floor(bitLen / Math.pow(2, i * 8)) & 0xff); }
-
-    const words = [];
-    for (let i = 0; i < bytes.length; i += 4) {
-      words.push(((bytes[i] << 24) | (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3]) >>> 0);
-    }
-
-    let h0 = H[0], h1 = H[1], h2 = H[2], h3 = H[3], h4 = H[4], h5 = H[5], h6 = H[6], h7 = H[7];
-    const w = new Array(64);
-    for (let i = 0; i < words.length; i += 16) {
-      for (let t = 0; t < 16; t += 1) { w[t] = words[i + t]; }
-      for (let t = 16; t < 64; t += 1) {
-        const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
-        const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
-        w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
-      }
-      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, hh = h7;
-      for (let t = 0; t < 64; t += 1) {
-        const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-        const ch = (e & f) ^ (~e & g);
-        const temp1 = (hh + S1 + ch + K[t] + w[t]) >>> 0;
-        const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-        const maj = (a & b) ^ (a & c) ^ (b & c);
-        const temp2 = (S0 + maj) >>> 0;
-        hh = g; g = f; f = e; e = (d + temp1) >>> 0; d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
-      }
-      h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
-      h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + hh) >>> 0;
-    }
-    return [h0, h1, h2, h3, h4, h5, h6, h7].map(function (x) {
-      return ('00000000' + x.toString(16)).slice(-8);
-    }).join('');
-  }
+   * com um token fine-grained do GitHub ("Gists: read and write"). O token é
+   * validado e guardado no seu navegador; cada marcação é enviada ao gist.
+   * Só o token do dono escreve; visitantes apenas leem. */
 
   function ownerConfig() {
     const p = window.OWNER_PROGRESS;
     return p && typeof p === 'object' ? p : {};
   }
 
-  function ownerHash() {
-    const h = ownerConfig().editHash;
-    return typeof h === 'string' ? h.trim().toLowerCase() : '';
+  function gistOwner() {
+    const u = ownerConfig().owner;
+    return typeof u === 'string' ? u.trim() : '';
   }
 
-  function ownerSnapshot() {
-    const s = ownerConfig().snapshot;
-    if (typeof s !== 'string') { return ''; }
-    const trimmed = s.trim();
-    if (!trimmed) { return ''; }
-    const m = /[#&]s=([A-Za-z0-9_-]+)/.exec(trimmed);
-    return (m ? m[1] : trimmed).replace(/[^A-Za-z0-9_-]/g, '');
+  function gistUser() {
+    const u = ownerConfig().gistUser;
+    return typeof u === 'string' ? u.trim() : '';
   }
 
-  function lockedInLocalStorage() {
-    try {
-      return window.localStorage.getItem(OWNER_KEY) === '1';
-    } catch (err) {
-      return false;
-    }
+  function gistId() {
+    const id = ownerConfig().gistId;
+    return typeof id === 'string' ? id.trim() : '';
   }
 
-  function rememberOwner() {
-    try {
-      window.localStorage.setItem(OWNER_KEY, '1');
-    } catch (err) {
-      /* localStorage indisponível: o desbloqueio dura só a sessão */
-    }
+  function gistFile() {
+    const f = ownerConfig().gistFile;
+    return typeof f === 'string' && f.trim() ? f.trim() : 'progress.json';
+  }
+
+  function configured() {
+    return Boolean(gistId() && gistUser());
   }
 
   function readEditToken() {
@@ -362,23 +308,144 @@
     return /[#&]s=([A-Za-z0-9_-]+)/.test(window.location.hash || '');
   }
 
-  /** Decide o modo antes de renderizar. Ver comentário no topo dos modos. */
-  function decideMode() {
-    const token = readEditToken();
-    if (token && ownerHash() && sha256Hex(token) === ownerHash()) {
-      rememberOwner();
-      return 'edit';
+  function storedToken() {
+    try {
+      return window.localStorage.getItem(TOKEN_KEY) || null;
+    } catch (err) {
+      return null;
     }
-    if (hasShareHash()) {
-      return 'share';
+  }
+
+  function rememberToken(value) {
+    try {
+      window.localStorage.setItem(TOKEN_KEY, value);
+    } catch (err) {
+      /* localStorage indisponível: o desbloqueio dura só a sessão */
     }
-    if (lockedInLocalStorage()) {
-      return 'edit';
+  }
+
+  function rawUrl() {
+    if (!gistUser() || !gistId()) {
+      return '';
     }
-    if (ownerSnapshot()) {
-      return 'owner';
+    return GIST_RAW + gistUser() + '/' + gistId() + '/raw/' + gistFile();
+  }
+
+  function apiUrl() {
+    return gistId() ? GIST_API + gistId() : '';
+  }
+
+  function setStatus(kind, message) {
+    if (!statusEl) {
+      return;
     }
-    return 'edit';
+    statusEl.textContent = message;
+    statusEl.className = 'action-status action-status-' + kind;
+  }
+
+  /** Valida o token com uma leitura autenticada do gist. */
+  function verifyToken(value) {
+    if (!value || !gistId()) {
+      return Promise.resolve(false);
+    }
+    return window.fetch(apiUrl(), {
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + value, Accept: 'application/vnd.github+json' }
+    }).then(function (res) {
+      return res.ok;
+    }).catch(function () {
+      return false;
+    });
+  }
+
+  /** Extrai o payload do progresso da resposta da API (ou do próprio JSON do raw). */
+  function gistPayloadFromJson(json) {
+    if (!json || typeof json !== 'object') {
+      return null;
+    }
+    if (json.files) {
+      const file = json.files[gistFile()];
+      if (!file || typeof file.content !== 'string') {
+        return null;
+      }
+      try {
+        return JSON.parse(file.content);
+      } catch (err) {
+        return null;
+      }
+    }
+    return json; // veio do /raw: já é o objeto do arquivo
+  }
+
+  /** Lê o progresso publicado (público). Dono usa a API (fresca); visitante usa o raw. */
+  function loadFromGist() {
+    if (!configured()) {
+      return Promise.resolve(null);
+    }
+    const fromRaw = function () {
+      const raw = rawUrl();
+      if (!raw) {
+        return Promise.reject(new Error('sem raw'));
+      }
+      return window.fetch(raw + '?_=' + Date.now(), { cache: 'no-store' })
+        .then(function (res) {
+          if (!res.ok) { throw new Error('HTTP ' + res.status); }
+          return res.text();
+        })
+        .then(function (txt) { return txt ? JSON.parse(txt) : null; })
+        .then(gistPayloadFromJson);
+    };
+    const fromApi = function () {
+      const api = apiUrl();
+      if (!api) {
+        return Promise.reject(new Error('sem gist'));
+      }
+      const headers = token ? { Authorization: 'Bearer ' + token } : {};
+      return window.fetch(api + '?nocache=' + Date.now(), { cache: 'no-store', headers: headers })
+        .then(function (res) {
+          if (!res.ok) { throw new Error('HTTP ' + res.status); }
+          return res.json();
+        })
+        .then(gistPayloadFromJson);
+    };
+    const first = token ? fromApi : fromRaw;
+    const second = token ? fromRaw : fromApi;
+    return first().catch(second).catch(function () { return null; });
+  }
+
+  /** Agenda o envio ao gist (debounce) — só no modo edição. */
+  function schedulePush() {
+    if (mode !== 'edit' || !token || !gistId()) {
+      return;
+    }
+    setStatus('saving', 'Salvando…');
+    if (pushTimer) {
+      window.clearTimeout(pushTimer);
+    }
+    pushTimer = window.setTimeout(pushToGist, 1200);
+  }
+
+  function pushToGist() {
+    pushTimer = null;
+    if (!token || !gistId()) {
+      return;
+    }
+    const files = {};
+    files[gistFile()] = { content: JSON.stringify(buildPayload(), null, 2) };
+    window.fetch(apiUrl(), {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ files: files })
+    }).then(function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+      setStatus('saved', 'Salvo ' + new Date().toLocaleTimeString('pt-BR'));
+    }).catch(function (err) {
+      setStatus('error', 'Falha ao salvar (' + err.message + ').');
+    });
   }
 
   /* ---------------- Compartilhar: instantâneo via #s= (sem backend) ----------------
@@ -489,19 +556,36 @@
     return true;
   }
 
-  /** Snapshot publicado em data/progress.js (#owner). Retorna true se aplicado. */
-  function applyOwnerSnapshot() {
-    const src = ownerSnapshot();
-    if (!src) {
-      return false;
+  /** Aplica um payload carregado do gist (ou do cache local). */
+  function applyLoaded(payload) {
+    if (payload && typeof payload === 'object') {
+      if (mode === 'edit' && storageAvailable) {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } catch (err) {
+          storageAvailable = false;
+        }
+      }
+      if (payload.updated) {
+        const d = new Date(payload.updated);
+        if (!isNaN(d.getTime())) {
+          ownerDate = d;
+        }
+      }
+      hydrate(payload);
+      return true;
     }
-    const snap = decodeShare(src);
-    if (!snap) {
-      return false;
+    const cached = readStored();
+    if (cached) {
+      if (cached.updated) {
+        const d = new Date(cached.updated);
+        if (!isNaN(d.getTime())) {
+          ownerDate = d;
+        }
+      }
+      hydrate(cached);
     }
-    ownerDate = snap.date;
-    applySnapshot(snap);
-    return true;
+    return false;
   }
 
   function enterViewModeUi() {
@@ -516,13 +600,13 @@
 
     if (mode === 'owner') {
       if (lead) {
-        const name = ownerConfig().owner;
+        const name = gistOwner();
         lead.textContent = name ? 'Progresso de ' + name : 'Progresso publicado';
       }
       if (label) {
         label.textContent = ownerDate
           ? 'atualizado em ' + ownerDate.toLocaleDateString('pt-BR')
-          : 'snapshot publicado';
+          : 'somente leitura';
       }
       if (exit) {
         exit.remove(); // visitante não tem "próprio progresso" para ver
@@ -790,15 +874,8 @@
       shareBtn.addEventListener('click', function () {
         copyText(window.location.origin + window.location.pathname + '#s=' + b64urlEncode(encodeShare()), shareBtn);
       });
-      const actions = [shareBtn];
-      if (ownerHash()) {
-        const publishBtn = el('button', { type: 'button', class: 'btn-ghost btn-publish', text: 'Copiar progresso para publicar' });
-        publishBtn.addEventListener('click', function () {
-          copyText(b64urlEncode(encodeShare()), publishBtn);
-        });
-        actions.push(publishBtn);
-      }
-      statsCol.appendChild(el('div', { class: 'hero-actions' }, actions));
+      statusEl = el('span', { class: 'action-status', role: 'status', 'aria-live': 'polite' });
+      statsCol.appendChild(el('div', { class: 'hero-actions' }, [shareBtn, statusEl]));
     }
 
     const chips = el('ul', { class: 'stage-chips' });
@@ -1011,36 +1088,63 @@
     data = window.ROADMAP;
     if (!data || !Array.isArray(data.stages) || data.stages.length === 0) {
       showDataError();
-      return;
+      return Promise.resolve();
     }
     index = buildIndex();
-    mode = decideMode();
 
-    if (mode === 'share' && !applyShare()) {
-      mode = ownerSnapshot() ? 'owner' : 'edit';
-    }
-    if (mode === 'owner' && !applyOwnerSnapshot()) {
-      mode = 'edit';
-    }
-    viewMode = mode === 'share' || mode === 'owner';
-    if (mode === 'edit') {
-      hydrate(readStored());
-    }
+    const hashToken = readEditToken();
+    const candidate = hashToken || storedToken();
+    const unlock = (candidate && gistId())
+      ? verifyToken(candidate).then(function (ok) {
+          if (!ok) {
+            return null;
+          }
+          if (hashToken) {
+            rememberToken(hashToken);
+          }
+          return candidate;
+        })
+      : Promise.resolve(null);
 
-    renderStages();
-    renderOverview();
-    renderMaterials();
-    renderCheckpoint();
-    refreshAll();
-    updateFooterNote();
-    if (viewMode) {
-      enterViewModeUi();
+    return unlock.then(function (t) {
+      token = t || null;
+      mode = hasShareHash() ? 'share' : (token ? 'edit' : 'owner');
+
+      if (mode === 'share' && applyShare()) {
+        viewMode = true;
+        return null;
+      }
+      if (mode === 'share') {
+        mode = 'owner'; // hash inválido → leitura
+      }
+      viewMode = mode !== 'edit';
+      return loadFromGist().then(applyLoaded);
+    }).then(function () {
+      renderStages();
+      renderOverview();
+      renderMaterials();
+      renderCheckpoint();
+      refreshAll();
+      updateFooterNote();
+      if (viewMode) {
+        enterViewModeUi();
+      }
+    });
+  }
+
+  let readyPromise = null;
+  function start() {
+    if (!readyPromise) {
+      readyPromise = init();
     }
+    return readyPromise;
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function () {
+      window.__ROADMAP_READY__ = start();
+    });
   } else {
-    init();
+    window.__ROADMAP_READY__ = start();
   }
 })();
